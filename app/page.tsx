@@ -1,69 +1,156 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import * as React from "react";
+
+import {
+  AnimationStage,
+  type AnimationStageHandle,
+} from "@/components/animation-stage";
+import { ControlPanel } from "@/components/control-panel";
+import { Badge } from "@/components/ui/badge";
+import { splitText } from "@/lib/split";
+import { resolveSemanticTemplate } from "@/lib/semantic-engine";
+import { DEFAULT_SETTINGS, type GeneratorSettings } from "@/lib/settings";
+import { getTemplate } from "@/lib/templates";
+
+const INPUT_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT"]);
+
+export default function Page() {
+  const [settings, setSettings] =
+    React.useState<GeneratorSettings>(DEFAULT_SETTINGS);
+  const [duration, setDuration] = React.useState(0);
+  const stageRef = React.useRef<AnimationStageHandle>(null);
+
+  const update = React.useCallback((patch: Partial<GeneratorSettings>) => {
+    setSettings((previous) => ({ ...previous, ...patch }));
+  }, []);
+
+  const replay = React.useCallback(() => {
+    stageRef.current?.replay();
+  }, []);
+
+  const handleDuration = React.useCallback((seconds: number) => {
+    setDuration((previous) =>
+      Math.abs(previous - seconds) < 0.005 ? previous : seconds,
+    );
+  }, []);
+
+  // The engine only runs when auto-detect is on; otherwise the manual pick wins.
+  const match = React.useMemo(
+    () => (settings.semantic ? resolveSemanticTemplate(settings.text) : null),
+    [settings.semantic, settings.text],
+  );
+
+  const activeTemplateId = match?.templateId ?? settings.templateId;
+  const activeTemplate = getTemplate(activeTemplateId);
+
+  const phrase = settings.text.trim();
+  const split = React.useMemo(() => splitText(phrase), [phrase]);
+
+  React.useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "r" && event.key !== "R") return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+      const target = event.target as HTMLElement | null;
+      if (target?.isContentEditable) return;
+      if (target && INPUT_TAGS.has(target.tagName)) return;
+
+      event.preventDefault();
+      stageRef.current?.replay();
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
+    <main className="app-shell flex min-h-dvh flex-1 flex-col lg:flex-row">
+      <ControlPanel
+        settings={settings}
+        onChange={update}
+        onReplay={replay}
+        match={match}
+        activeTemplateId={activeTemplateId}
+        phrase={phrase}
+      />
+
+      <section className="order-1 flex min-w-0 flex-1 flex-col gap-4 p-4 lg:order-2 lg:h-dvh lg:p-6">
+        <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+          <div className="space-y-1">
+            <h1 className="text-lg font-semibold tracking-tight">
+              {activeTemplate.name}
+            </h1>
+            <p className="text-xs text-muted-foreground">
+              {activeTemplate.tagline}
+              {match ? (
+                <>
+                  {" · "}
+                  <span className="text-primary">
+                    semantic override on “{match.word}”
+                  </span>
+                </>
+              ) : null}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge variant="outline" className="tabular font-mono">
+              {split.charCount} chars
+            </Badge>
+            <Badge variant="outline" className="tabular font-mono">
+              {split.words.length} masks
+            </Badge>
+            {split.gradientCount > 0 ? (
+              <Badge variant="outline" className="tabular font-mono">
+                {split.gradientCount} gradient
+              </Badge>
+            ) : null}
+            <Badge variant="outline" className="tabular font-mono">
+              {duration.toFixed(2)}s
+            </Badge>
+          </div>
+        </header>
+
+        <div className="relative min-h-[320px] flex-1 overflow-hidden rounded-2xl border border-border shadow-2xl shadow-black/40">
+          {phrase ? (
+            <AnimationStage
+              ref={stageRef}
+              text={phrase}
+              templateId={activeTemplateId}
+              paletteId={settings.paletteId}
+              glyphPool={settings.glyphPool}
+              speed={settings.speed}
+              stagger={settings.stagger}
+              fontSize={settings.fontSize}
+              tracking={settings.tracking}
+              leading={settings.leading}
+              weight={settings.weight}
+              invertCanvas={settings.invertCanvas}
+              loop={settings.loop}
+              onDuration={handleDuration}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+          ) : (
+            <div className="absolute inset-0 grid place-items-center bg-card/30 text-sm text-muted-foreground">
+              Type a phrase to animate.
+            </div>
+          )}
         </div>
-      </main>
-    </div>
+
+        <footer className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 text-xs text-muted-foreground">
+          <p>
+            Every character is masked by its own word box — nothing travels
+            outside the finished text footprint.
+          </p>
+          <p>
+            Press{" "}
+            <kbd className="rounded border border-border bg-card px-1.5 py-0.5 font-mono text-[0.7rem]">
+              R
+            </kbd>{" "}
+            to replay
+          </p>
+        </footer>
+      </section>
+    </main>
   );
 }

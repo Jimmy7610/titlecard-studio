@@ -1,26 +1,359 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-sans);
   --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ==================================================================
+   Product theme — dark shell, orange accent lifted from the reference
+   ================================================================== */
+
+:root {
+  --font-sans: var(--font-geist-sans);
+  --font-display: var(--font-outfit);
+  --radius: 0.7rem;
+}
+
+.dark {
+  --background: oklch(0.146 0.006 275);
+  --foreground: oklch(0.968 0.004 275);
+  --card: oklch(0.188 0.006 275);
+  --card-foreground: oklch(0.968 0.004 275);
+  --popover: oklch(0.202 0.006 275);
+  --popover-foreground: oklch(0.968 0.004 275);
+  --primary: oklch(0.664 0.196 42);
+  --primary-foreground: oklch(0.16 0.03 44);
+  --secondary: oklch(0.262 0.006 275);
+  --secondary-foreground: oklch(0.968 0.004 275);
+  --muted: oklch(0.238 0.006 275);
+  --muted-foreground: oklch(0.686 0.009 275);
+  --accent: oklch(0.272 0.008 275);
+  --accent-foreground: oklch(0.968 0.004 275);
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.664 0.196 42);
+}
+
+.app-shell {
+  background-image:
+    radial-gradient(
+      ellipse 70% 55% at 78% -10%,
+      color-mix(in oklab, var(--primary) 12%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(ellipse 60% 50% at 0% 100%, oklch(0.3 0.02 275 / 0.5), transparent 68%);
+}
+
+/* Numeric readouts stay put while a slider is dragged. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* ==================================================================
+   Animation stage
+
+   Palette custom properties are written inline by AnimationStage from
+   lib/palettes.ts, so a palette or canvas swap is a single style update
+   rather than a cascade of selectors.
+   ================================================================== */
+
+.stw-stage {
+  background: var(--stage-bg);
+  color: var(--stage-ink);
+  transition: background-color 320ms ease, color 320ms ease;
+}
+
+.stw-stage-grid {
+  background-image:
+    linear-gradient(to right, var(--stage-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--stage-line) 1px, transparent 1px);
+  background-size: 46px 46px;
+  -webkit-mask-image: radial-gradient(
+    ellipse 78% 68% at 50% 50%,
+    #000 22%,
+    transparent 78%
+  );
+  mask-image: radial-gradient(
+    ellipse 78% 68% at 50% 50%,
+    #000 22%,
+    transparent 78%
+  );
+}
+
+/* ==================================================================
+   Split text primitives
+   ------------------------------------------------------------------
+   Mask height and line spacing are deliberately two different things.
+
+   `--stw-mask` fixes the word box at the height of the font's own
+   content area, so descenders always survive the overflow clip, and a
+   character at translateY(110%) always clears it.
+
+   `--stw-leading` is what the user drags. It sets the strut, and the
+   word's negative margin-bottom lets lines pull closer than the mask is
+   tall — an inline-block contributes its *margin* box to the line box,
+   which is what makes tight display leading possible without clipping
+   a single glyph.
+   ================================================================== */
+
+.stw {
+  display: block;
+  font-family: var(--font-display), var(--font-sans), system-ui, sans-serif;
+  font-weight: var(--stw-weight, 600);
+  line-height: var(--stw-leading, 1.1);
+  letter-spacing: var(--stw-tracking, -0.025em);
+
+  /* Measured against Outfit: below this the content area overflows the
+     clip and the tail of a "g" is cut. Not a free parameter. */
+  --stw-mask: 1.25;
+}
+
+/* Held back until the timeline's initial state is committed, so the
+   server-rendered final text is never flashed. The `sr-only` phrase sits
+   outside this wrapper and stays available to assistive tech. */
+.stw-visual {
+  visibility: hidden;
+}
+
+[data-stw-ready="true"] .stw-visual {
+  visibility: visible;
+}
+
+.stw-word {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: top;
+  line-height: var(--stw-mask);
+  margin-bottom: calc((var(--stw-leading, 1.1) - var(--stw-mask)) * 1em);
+  /* Negative tracking shortens the final glyph's advance, which the mask
+     would otherwise clip. Give the box that width back. */
+  padding-right: max(0em, calc(-1 * var(--stw-tracking, -0.025em)));
+}
+
+.stw-space {
+  display: inline-block;
+  white-space: pre;
+}
+
+.stw-flash {
+  position: absolute;
+  /* Hugs the cap-height-to-baseline band instead of the full line box, so
+     the slab reads as a block behind the glyphs rather than a rectangle
+     floating around them. */
+  inset: 0.12em 0 0.26em;
+  z-index: 0;
+  display: block;
+  background: var(--stw-hot);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.stw-char {
+  position: relative;
+  z-index: 1;
+  display: inline-block;
+  vertical-align: top;
+  line-height: inherit;
+  transform-origin: 0% 100%;
+  backface-visibility: hidden;
+  will-change: transform, opacity, filter, clip-path;
+}
+
+.stw-real {
+  display: block;
+}
+
+/* Scramble overlay. Absolutely positioned, so however wide a substituted
+   glyph is it cannot change the slot's advance width — `.stw-real` below
+   holds the layout for the entire decode. */
+.stw-glyph {
+  position: absolute;
+  inset: 0;
+  line-height: inherit;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Applied to the leaves rather than the character box: background-clip
+   does not reach an absolutely positioned descendant, so the overlay
+   needs its own gradient to survive a decode. */
+.stw-char[data-gradient="true"] .stw-real,
+.stw-char[data-gradient="true"] .stw-glyph {
+  background-image: var(--stw-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+.stw-cursor {
+  display: inline-block;
+  width: 0.46em;
+  height: 0.68em;
+  margin-left: 0.14em;
+  background: var(--stw-hot);
+  vertical-align: baseline;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.stw-underline {
+  position: absolute;
+  right: 0;
+  bottom: 0.17em;
+  left: 0;
+  height: 0.055em;
+  border-radius: 999px;
+  background-image: var(--stw-gradient);
+  transform: scaleX(0);
+  transform-origin: 0% 50%;
+  pointer-events: none;
+}
+
+.stw-debris {
+  position: absolute;
+  display: block;
+  border-radius: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.stw-debris[data-tone="hot"] {
+  background: var(--stw-hot);
+}
+
+.stw-debris[data-tone="warm"] {
+  background: var(--stw-warm);
+}
+
+.stw-debris[data-tone="sun"] {
+  background: var(--stw-sun);
 }
