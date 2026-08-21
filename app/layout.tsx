@@ -23,7 +23,7 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: "Semantic Text Animation Generator",
+  title: "titlecard — bounded text animations",
   description:
     "Bounded, mask-based typography animations built with GSAP — with a semantic engine that picks the motion for you.",
 };

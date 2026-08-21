@@ -1,7 +1,13 @@
 {
-  "name": "semantic-text-animator",
+  "name": "titlecard",
   "version": "0.1.0",
   "private": true,
+  "description": "Bounded, mask-based text animations. Every reveal is clipped by the word's own box.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/opensverige/titlecard.git"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",

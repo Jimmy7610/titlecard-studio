@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# agent tooling — regenerated locally by `next dev`, not useful to consumers
+/.claude/
+AGENTS.md
+CLAUDE.md

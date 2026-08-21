@@ -1,4 +1,6 @@
-# Semantic Text Animation Generator
+# titlecard
+
+A title card is an animated wordmark that opens something. This generates them.
 
 Bounded, mask-based typography animations built with **Next.js 16**, **TypeScript**,
 **Tailwind v4**, **GSAP 3** and **shadcn/ui**.
