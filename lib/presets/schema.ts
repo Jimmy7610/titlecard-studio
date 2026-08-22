@@ -8,6 +8,7 @@ import {
   DEFAULT_MOTION,
   DEFAULT_PROJECT,
   DEFAULT_TYPOGRAPHY,
+  RANGES,
   SCHEMA_VERSION,
   createLayer,
 } from "@/lib/project";
@@ -31,6 +32,11 @@ import type {
  * open — hence `migrateV1`. And a malformed file must produce a message, never
  * a crash and never a half-applied project: every field is read defensively and
  * falls back to the default, collecting a warning as it goes.
+ *
+ * Every numeric clamp is the control's own range rather than a second, wider
+ * opinion about it. A file carrying a value no slider can reach used to import
+ * intact and leave that control pinned at its end stop, describing a project it
+ * did not have.
  */
 
 export const PRESET_SCHEMA_ID = `semantic-text-animator/preset@${SCHEMA_VERSION}`;
@@ -157,10 +163,10 @@ function readTypography(source: Bag): TypographyConfig {
     // Font ids are resolved leniently downstream, so an unknown face degrades
     // to the default rather than failing the import.
     fontId: str(source, "fontId", DEFAULT_TYPOGRAPHY.fontId),
-    fontSize: num(source, "fontSize", DEFAULT_TYPOGRAPHY.fontSize, { min: 0.5, max: 40 }),
-    tracking: num(source, "tracking", DEFAULT_TYPOGRAPHY.tracking, { min: -0.3, max: 1 }),
-    leading: num(source, "leading", DEFAULT_TYPOGRAPHY.leading, { min: 0.5, max: 4 }),
-    weight: num(source, "weight", DEFAULT_TYPOGRAPHY.weight, { min: 100, max: 900 }),
+    fontSize: num(source, "fontSize", DEFAULT_TYPOGRAPHY.fontSize, RANGES.fontSize),
+    tracking: num(source, "tracking", DEFAULT_TYPOGRAPHY.tracking, RANGES.tracking),
+    leading: num(source, "leading", DEFAULT_TYPOGRAPHY.leading, RANGES.leading),
+    weight: num(source, "weight", DEFAULT_TYPOGRAPHY.weight, RANGES.weight),
     align: oneOf(source, "align", ["left", "center", "right"] as const, DEFAULT_TYPOGRAPHY.align),
     transform: oneOf(
       source,
@@ -180,9 +186,9 @@ function readTypography(source: Bag): TypographyConfig {
 
 function readMotion(source: Bag): MotionConfig {
   return {
-    speed: num(source, "speed", DEFAULT_MOTION.speed, { min: 0.05, max: 6 }),
-    stagger: num(source, "stagger", DEFAULT_MOTION.stagger, { min: 0, max: 1 }),
-    delay: num(source, "delay", DEFAULT_MOTION.delay, { min: 0, max: 10 }),
+    speed: num(source, "speed", DEFAULT_MOTION.speed, RANGES.speed),
+    stagger: num(source, "stagger", DEFAULT_MOTION.stagger, RANGES.stagger),
+    delay: num(source, "delay", DEFAULT_MOTION.delay, RANGES.delay),
     easing: oneOf(
       source,
       "easing",
@@ -190,7 +196,7 @@ function readMotion(source: Bag): MotionConfig {
       DEFAULT_MOTION.easing,
     ),
     loop: bool(source, "loop", DEFAULT_MOTION.loop),
-    hold: num(source, "hold", DEFAULT_MOTION.hold, { min: 0, max: 10 }),
+    hold: num(source, "hold", DEFAULT_MOTION.hold, RANGES.hold),
   };
 }
 
@@ -203,13 +209,13 @@ function readColor(source: Bag): ColorConfig {
     accent3: colour(source, "accent3", DEFAULT_COLOR.accent3),
     gradientStart: colour(source, "gradientStart", DEFAULT_COLOR.gradientStart),
     gradientEnd: colour(source, "gradientEnd", DEFAULT_COLOR.gradientEnd),
-    gradientAngle: num(source, "gradientAngle", DEFAULT_COLOR.gradientAngle, { min: 0, max: 360 }),
-    glow: num(source, "glow", DEFAULT_COLOR.glow, { min: 0, max: 2 }),
+    gradientAngle: num(source, "gradientAngle", DEFAULT_COLOR.gradientAngle, RANGES.angle),
+    glow: num(source, "glow", DEFAULT_COLOR.glow, RANGES.glow),
     glowColor: colour(source, "glowColor", DEFAULT_COLOR.glowColor),
-    shadow: num(source, "shadow", DEFAULT_COLOR.shadow, { min: 0, max: 2 }),
-    outline: num(source, "outline", DEFAULT_COLOR.outline, { min: 0, max: 0.5 }),
+    shadow: num(source, "shadow", DEFAULT_COLOR.shadow, RANGES.shadow),
+    outline: num(source, "outline", DEFAULT_COLOR.outline, RANGES.outline),
     outlineColor: colour(source, "outlineColor", DEFAULT_COLOR.outlineColor),
-    opacity: num(source, "opacity", DEFAULT_COLOR.opacity, { min: 0, max: 1 }),
+    opacity: num(source, "opacity", DEFAULT_COLOR.opacity, RANGES.opacity),
   };
 }
 
@@ -232,16 +238,13 @@ function readBackground(source: Bag, warnings: string[]): BackgroundConfig {
     color: colour(source, "color", DEFAULT_BACKGROUND.color),
     gradientStart: colour(source, "gradientStart", DEFAULT_BACKGROUND.gradientStart),
     gradientEnd: colour(source, "gradientEnd", DEFAULT_BACKGROUND.gradientEnd),
-    gradientAngle: num(source, "gradientAngle", DEFAULT_BACKGROUND.gradientAngle, {
-      min: 0,
-      max: 360,
-    }),
+    gradientAngle: num(source, "gradientAngle", DEFAULT_BACKGROUND.gradientAngle, RANGES.angle),
     animated: bool(source, "animated", DEFAULT_BACKGROUND.animated),
-    noise: num(source, "noise", DEFAULT_BACKGROUND.noise, { min: 0, max: 1 }),
-    grain: num(source, "grain", DEFAULT_BACKGROUND.grain, { min: 0, max: 1 }),
-    vignette: num(source, "vignette", DEFAULT_BACKGROUND.vignette, { min: 0, max: 1 }),
-    glow: num(source, "glow", DEFAULT_BACKGROUND.glow, { min: 0, max: 1 }),
-    grid: num(source, "grid", DEFAULT_BACKGROUND.grid, { min: 0, max: 1 }),
+    noise: num(source, "noise", DEFAULT_BACKGROUND.noise, RANGES.effect),
+    grain: num(source, "grain", DEFAULT_BACKGROUND.grain, RANGES.effect),
+    vignette: num(source, "vignette", DEFAULT_BACKGROUND.vignette, RANGES.effect),
+    glow: num(source, "glow", DEFAULT_BACKGROUND.glow, RANGES.effect),
+    grid: num(source, "grid", DEFAULT_BACKGROUND.grid, RANGES.effect),
     imageUrl: safeImage,
     imageFit: oneOf(source, "imageFit", ["cover", "contain"] as const, DEFAULT_BACKGROUND.imageFit),
   };
@@ -259,8 +262,8 @@ function readPosition(source: Bag): PositionConfig {
       ] as const,
       "center",
     ),
-    x: num(source, "x", 0, { min: -100, max: 100 }),
-    y: num(source, "y", 0, { min: -100, max: 100 }),
+    x: num(source, "x", 0, RANGES.offset),
+    y: num(source, "y", 0, RANGES.offset),
   };
 }
 
@@ -275,11 +278,11 @@ function readWordStyles(value: unknown): Record<number, WordStyle> {
     const style: WordStyle = {};
     if (typeof entry.color === "string") style.color = colour(entry, "color", "");
     if (typeof entry.gradient === "boolean") style.gradient = entry.gradient;
-    if (typeof entry.weight === "number") style.weight = num(entry, "weight", 600, { min: 100, max: 900 });
-    if (typeof entry.scale === "number") style.scale = num(entry, "scale", 1, { min: 0.2, max: 4 });
-    if (typeof entry.glow === "number") style.glow = num(entry, "glow", 0, { min: 0, max: 2 });
-    if (typeof entry.opacity === "number") style.opacity = num(entry, "opacity", 1, { min: 0, max: 1 });
-    if (typeof entry.delay === "number") style.delay = num(entry, "delay", 0, { min: 0, max: 5 });
+    if (typeof entry.weight === "number") style.weight = num(entry, "weight", 600, RANGES.weight);
+    if (typeof entry.scale === "number") style.scale = num(entry, "scale", 1, RANGES.wordScale);
+    if (typeof entry.glow === "number") style.glow = num(entry, "glow", 0, RANGES.glow);
+    if (typeof entry.opacity === "number") style.opacity = num(entry, "opacity", 1, RANGES.opacity);
+    if (typeof entry.delay === "number") style.delay = num(entry, "delay", 0, RANGES.wordDelay);
     if (typeof entry.emphasis === "string") {
       style.emphasis = oneOf(entry, "emphasis", ["none", "pop", "delay", "lead"] as const, "none");
     }
@@ -305,7 +308,7 @@ function readLayer(value: unknown, index: number, warnings: string[]): TextLayer
     text: typeof source.text === "string" ? source.text.slice(0, 400) : "",
     templateId: hasTemplate(templateId) ? templateId : "agent-reveal",
     glyphPool: oneOf(source, "glyphPool", poolIds, "hex"),
-    delay: num(source, "delay", 0, { min: 0, max: 30 }),
+    delay: num(source, "delay", 0, RANGES.layerDelay),
     position: readPosition(bagAt(source, "position")),
     typography: readLayerTypography(bagAt(source, "typography")),
     wordStyles: readWordStyles(source.wordStyles),
@@ -316,9 +319,9 @@ function readLayer(value: unknown, index: number, warnings: string[]): TextLayer
 function readLayerTypography(source: Bag): TextLayer["typography"] {
   const out: TextLayer["typography"] = {};
   if (typeof source.fontId === "string") out.fontId = source.fontId;
-  if (typeof source.weight === "number") out.weight = num(source, "weight", 600, { min: 100, max: 900 });
-  if (typeof source.tracking === "number") out.tracking = num(source, "tracking", 0, { min: -0.3, max: 1 });
-  if (typeof source.scale === "number") out.scale = num(source, "scale", 1, { min: 0.1, max: 5 });
+  if (typeof source.weight === "number") out.weight = num(source, "weight", 600, RANGES.weight);
+  if (typeof source.tracking === "number") out.tracking = num(source, "tracking", 0, RANGES.tracking);
+  if (typeof source.scale === "number") out.scale = num(source, "scale", 1, RANGES.wordScale);
   if (typeof source.italic === "boolean") out.italic = source.italic;
   if (typeof source.transform === "string") {
     out.transform = oneOf(source, "transform", ["none", "uppercase", "lowercase"] as const, "none");

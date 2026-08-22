@@ -70,10 +70,20 @@ export const SPLIT_PRIMITIVES_CSS = `
    whatever face is loaded. Deriving it from the font instead of pinning a
    constant is what makes the animation font-independent.
 
-   Leading is applied as a negative margin instead. An inline-block
-   contributes its *margin* box to the line box, so lines can pull tighter
-   than the mask is tall without shrinking the box the glyphs are clipped
-   against.
+   Leading is applied as a negative margin instead, split evenly above and
+   below. An inline-block contributes its *margin* box to the line box, so
+   lines can pull tighter than the mask is tall without shrinking the box
+   the glyphs are clipped against — and splitting the correction is what
+   keeps the mask centred on the line box, exactly the way a normal line box
+   is centred on its own content area. Two things follow. The mask's content
+   area lands on the strut's, so the caret and the inter-word spaces sit on
+   the same baseline as the glyphs. And the block overhangs its own glyphs
+   by the same amount at both ends, so centring the block centres the type
+   and one arithmetic step reaches the descent.
+
+   Put the whole correction below the box instead and the block ends above
+   its own glyphs, which is where a decoration anchored to the bottom edge
+   ends up: inside the text.
    ------------------------------------------------------------------ */
 
 .stw {
@@ -90,6 +100,7 @@ export const SPLIT_PRIMITIVES_CSS = `
 }
 
 .stw-visual {
+  display: block;
   /* Held back until the timeline's initial state is committed, so the
      finished text is never painted before the animation takes over. */
   visibility: hidden;
@@ -121,9 +132,16 @@ export const SPLIT_PRIMITIVES_CSS = `
   position: relative;
   display: inline-block;
   overflow: hidden;
-  vertical-align: top;
+  /* An inline-block that clips takes its bottom margin edge as its baseline,
+     so it cannot be baseline-aligned. Bottom alignment plus the split margin
+     below lands its content area on the strut's, which is what puts the caret
+     and the inter-word spaces on the same baseline as the glyphs — and, for a
+     word carrying a size multiplier, leaves it a descender away from the line's
+     baseline rather than a whole ascender. */
+  vertical-align: bottom;
   line-height: normal;
-  margin-bottom: calc(var(--stw-leading, 1.1) * 1em - 1lh);
+  margin-top: calc((var(--stw-leading, 1.1) * 1em - 1lh) / 2);
+  margin-bottom: calc((var(--stw-leading, 1.1) * 1em - 1lh) / 2);
   /* Negative tracking shortens the final glyph's advance, which the mask
      would otherwise clip. Give the box that width back. */
   padding-right: max(0em, calc(-1 * var(--stw-tracking, -0.025em)));
@@ -132,10 +150,11 @@ export const SPLIT_PRIMITIVES_CSS = `
 /* Browsers without the lh unit fall back to a fixed multiple. It is the
    old, font-dependent behaviour, kept only so those engines still render
    something rather than clipping every descender. */
-@supports not (margin-bottom: 1lh) {
+@supports not (margin-top: 1lh) {
   .stw-word {
     line-height: var(--stw-mask, 1.32);
-    margin-bottom: calc((var(--stw-leading, 1.1) - var(--stw-mask, 1.32)) * 1em);
+    margin-top: calc((var(--stw-leading, 1.1) - var(--stw-mask, 1.32)) * 0.5em);
+    margin-bottom: calc((var(--stw-leading, 1.1) - var(--stw-mask, 1.32)) * 0.5em);
   }
 }
 
@@ -213,17 +232,37 @@ export const SPLIT_PRIMITIVES_CSS = `
   pointer-events: none;
 }
 
+/* The block ends half a leading step above the last row's descent — that
+   step is the word box's own negative margin. Adding it back lands on the
+   descent in any face, at any size, at any leading, which is why this rule
+   holds up where a fixed offset from the bottom edge did not. The gap under
+   it is the one figure here that is a design choice, not a font metric. */
 .stw-underline {
   position: absolute;
   right: 0;
-  bottom: 0.17em;
+  /* Its own line-height, so the lh unit is the font's content area — the
+     metric the mask is built from — rather than the phrase's leading. */
+  line-height: normal;
+  top: calc(
+    100% + (1lh - var(--stw-leading, 1.1) * 1em) / 2 +
+      var(--stw-underline-gap, 0.06em)
+  );
   left: 0;
-  height: 0.055em;
+  height: var(--stw-underline-weight, 0.055em);
   border-radius: 999px;
   background-image: var(--stw-gradient);
   transform: scaleX(0);
   transform-origin: 0% 50%;
   pointer-events: none;
+}
+
+@supports not (top: 1lh) {
+  .stw-underline {
+    top: calc(
+      100% + (var(--stw-mask, 1.32) - var(--stw-leading, 1.1)) * 0.5em +
+        var(--stw-underline-gap, 0.06em)
+    );
+  }
 }
 
 .stw-debris {

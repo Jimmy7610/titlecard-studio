@@ -48,6 +48,22 @@ import type { TextAlign, TextTransform } from "@/lib/types";
 /** Stable empty array — a fresh literal would re-render on every pass. */
 const EMPTY_FONTS: CustomFont[] = [];
 
+/**
+ * The nearest weight a face actually ships.
+ *
+ * Switching from a variable face at 600 to a single-weight one used to leave
+ * the picker displaying 600 over a list whose only entry is 400 — and the
+ * preview rendering a synthesised bold that no export could reproduce.
+ */
+function nearestWeight(weights: readonly number[], wanted: number): number {
+  if (weights.includes(wanted)) return wanted;
+  return weights.reduce(
+    (best, weight) =>
+      Math.abs(weight - wanted) < Math.abs(best - wanted) ? weight : best,
+    weights[0] ?? wanted,
+  );
+}
+
 const CATEGORY_LABEL: Record<string, string> = {
   sans: "Sans",
   display: "Display",
@@ -73,7 +89,10 @@ export function TypographyPanel({ controller }: { controller: ProjectController 
     try {
       const added = await addCustomFont(file);
       setCustom(listCustomFonts());
-      setTypography({ fontId: added.id }, "typography.font");
+      setTypography(
+        { fontId: added.id, weight: nearestWeight(resolveFont(added.id).weights, typography.weight) },
+        "typography.font",
+      );
       toast.success(`Loaded ${added.name}`, {
         description: isSessionOnly(added)
           ? "Too large to keep between sessions — it will need re-uploading."
@@ -108,8 +127,9 @@ export function TypographyPanel({ controller }: { controller: ProjectController 
           value={typography.fontId}
           onValueChange={(value) => {
             const id = String(value);
-            void loadFont(id, typography.weight);
-            setTypography({ fontId: id }, "typography.font");
+            const weight = nearestWeight(resolveFont(id).weights, typography.weight);
+            void loadFont(id, weight);
+            setTypography({ fontId: id, weight }, "typography.font");
           }}
         >
           <SelectTrigger id="font" className="h-8 w-full">
@@ -169,7 +189,13 @@ export function TypographyPanel({ controller }: { controller: ProjectController 
               onClick={() => {
                 removeCustomFont(font.id);
                 setCustom(listCustomFonts());
-                setTypography({ fontId: "outfit" }, "typography.font");
+                setTypography(
+                  {
+                    fontId: "outfit",
+                    weight: nearestWeight(resolveFont("outfit").weights, typography.weight),
+                  },
+                  "typography.font",
+                );
               }}
             >
               <TrashIcon />

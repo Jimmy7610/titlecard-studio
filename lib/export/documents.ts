@@ -184,8 +184,9 @@ ${fontNote}${customNote}
 //
 // The word span carries overflow: hidden and is exactly one line box tall at
 // line-height: normal, so a character at translateY(110%) clears its own mask
-// whatever typeface is loaded. Leading is applied as a negative margin instead,
-// so pulling lines tight never shrinks the box the glyphs are clipped against.
+// whatever typeface is loaded. Leading is applied as a negative margin between
+// lines, so pulling lines tight never shrinks the box the glyphs are clipped
+// against and the block still ends on the last line's descent.
 
 import * as React from "react";
 import { useGSAP } from "@gsap/react";
@@ -281,9 +282,11 @@ ${model.theme.grain > 0 ? '        <span className="stw-grain" />\n' : ""}      
                         ) : null}
                       </React.Fragment>
                     ))}
+                    {layer.cursor && lineIndex === layer.lines.length - 1 ? (
+                      <span className="stw-cursor" />
+                    ) : null}
                   </span>
                 ))}
-                {layer.cursor ? <span className="stw-cursor" /> : null}
                 <span className="stw-underline" />
                 {DEBRIS.map((particle, index) => (
                   <span

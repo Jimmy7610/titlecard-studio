@@ -45,11 +45,23 @@ export function TimelineBar({ stage, loop, onLoopChange, rebuildKey }: TimelineB
   const fill = React.useRef<HTMLDivElement>(null);
   const timeLabel = React.useRef<HTMLSpanElement>(null);
   const totalLabel = React.useRef<HTMLSpanElement>(null);
-  const playIcon = React.useRef<HTMLButtonElement>(null);
 
   const [rate, setRate] = React.useState(1);
   const [scrubbing, setScrubbing] = React.useState(false);
+  /**
+   * Mirrors the GSAP timeline rather than the buttons.
+   *
+   * Tracking it from click handlers alone meant every other route into playback
+   * — the Space shortcut, `r`, a timeline that simply reached its end — left the
+   * icon claiming the opposite of what the animation was doing.
+   */
   const [playing, setPlaying] = React.useState(true);
+
+  // Read inside the frame loop, which must not be rebuilt when the rate changes.
+  const rateRef = React.useRef(rate);
+  React.useEffect(() => {
+    rateRef.current = rate;
+  }, [rate]);
 
   React.useEffect(() => {
     let frame = 0;
@@ -62,7 +74,15 @@ export function TimelineBar({ stage, loop, onLoopChange, rebuildKey }: TimelineB
         if (totalLabel.current) totalLabel.current.textContent = "0.00s";
         if (fill.current) fill.current.style.width = "0%";
         if (playhead.current) playhead.current.style.left = "0%";
+        if (track.current) track.current.setAttribute("aria-valuenow", "0");
         return;
+      }
+
+      // A rebuilt timeline starts at 1x, so the chosen rate is re-applied here
+      // rather than only when the buttons are pressed — otherwise the control
+      // keeps claiming 2x over an animation that has quietly gone back to 1x.
+      if (Math.abs(timeline.timeScale() - rateRef.current) > 0.001) {
+        timeline.timeScale(rateRef.current);
       }
 
       const duration = timeline.duration() || 1;
@@ -73,9 +93,14 @@ export function TimelineBar({ stage, loop, onLoopChange, rebuildKey }: TimelineB
       if (playhead.current) playhead.current.style.left = `${percent}%`;
       if (timeLabel.current) timeLabel.current.textContent = format(time);
       if (totalLabel.current) totalLabel.current.textContent = format(timeline.duration());
+      if (track.current) {
+        track.current.setAttribute("aria-valuenow", String(Math.round(percent)));
+        track.current.setAttribute("aria-valuetext", `${format(time)} of ${format(timeline.duration())}`);
+      }
 
-      const isPlaying = !timeline.paused();
-      if (playIcon.current) playIcon.current.dataset.playing = isPlaying ? "true" : "false";
+      // "Finished" is not "paused", but it is not playing either.
+      const isPlaying = !timeline.paused() && timeline.isActive();
+      setPlaying((previous) => (previous === isPlaying ? previous : isPlaying));
     };
 
     frame = window.requestAnimationFrame(tick);
@@ -115,11 +140,6 @@ export function TimelineBar({ stage, loop, onLoopChange, rebuildKey }: TimelineB
     };
   }, [scrubbing, stage]);
 
-  const toggle = () => {
-    stage.current?.toggle();
-    setPlaying((previous) => !previous);
-  };
-
   const changeRate = (next: number) => {
     setRate(next);
     stage.current?.setRate(next);
@@ -129,13 +149,11 @@ export function TimelineBar({ stage, loop, onLoopChange, rebuildKey }: TimelineB
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border bg-card/40 px-3 py-2">
       <div className="flex items-center gap-1">
         <Button
-          ref={playIcon}
           type="button"
           variant="secondary"
           size="icon-sm"
-          onClick={toggle}
+          onClick={() => stage.current?.toggle()}
           aria-label={playing ? "Pause" : "Play"}
-          className="group"
         >
           {playing ? <PauseIcon /> : <PlayIcon />}
         </Button>
@@ -144,10 +162,7 @@ export function TimelineBar({ stage, loop, onLoopChange, rebuildKey }: TimelineB
           variant="ghost"
           size="icon-sm"
           aria-label="Replay"
-          onClick={() => {
-            stage.current?.replay();
-            setPlaying(true);
-          }}
+          onClick={() => stage.current?.replay()}
         >
           <RotateCcwIcon />
         </Button>
@@ -156,10 +171,7 @@ export function TimelineBar({ stage, loop, onLoopChange, rebuildKey }: TimelineB
           variant="ghost"
           size="icon-sm"
           aria-label="Step back one frame"
-          onClick={() => {
-            stage.current?.step(-1);
-            setPlaying(false);
-          }}
+          onClick={() => stage.current?.step(-1)}
         >
           <ChevronLeftIcon />
         </Button>
@@ -168,10 +180,7 @@ export function TimelineBar({ stage, loop, onLoopChange, rebuildKey }: TimelineB
           variant="ghost"
           size="icon-sm"
           aria-label="Step forward one frame"
-          onClick={() => {
-            stage.current?.step(1);
-            setPlaying(false);
-          }}
+          onClick={() => stage.current?.step(1)}
         >
           <ChevronRightIcon />
         </Button>
@@ -197,7 +206,6 @@ export function TimelineBar({ stage, loop, onLoopChange, rebuildKey }: TimelineB
         aria-valuenow={0}
         onPointerDown={(event) => {
           setScrubbing(true);
-          setPlaying(false);
           seekFromPointer(event.clientX);
         }}
         onKeyDown={(event) => {
@@ -206,11 +214,9 @@ export function TimelineBar({ stage, loop, onLoopChange, rebuildKey }: TimelineB
           if (event.key === "ArrowLeft") {
             event.preventDefault();
             stage.current?.step(-1);
-            setPlaying(false);
           } else if (event.key === "ArrowRight") {
             event.preventDefault();
             stage.current?.step(1);
-            setPlaying(false);
           }
         }}
         className="relative h-6 min-w-40 flex-1 cursor-pointer touch-none rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/50"

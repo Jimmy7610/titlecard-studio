@@ -55,11 +55,18 @@ export function StylePanel({ controller }: { controller: ProjectController }) {
   const setColor = (patch: Partial<ColorConfig>, tag: string) =>
     update({ color: { ...colour, ...patch } }, { tag });
 
+  /**
+   * Puts the colours back to the palette and touches nothing else.
+   *
+   * It used to spread the whole default colour config, which also silently
+   * switched off glow, drop shadow, outline and text opacity — controls that
+   * live in a different section and have nothing to do with the palette.
+   */
   const resetToPalette = () => {
     update(
       {
         color: {
-          ...DEFAULT_COLOR,
+          ...colour,
           mode: "palette",
           text: project.invertCanvas ? palette.dark.ink : palette.light.ink,
           accent1: palette.hot,
@@ -67,6 +74,7 @@ export function StylePanel({ controller }: { controller: ProjectController }) {
           accent3: palette.sun,
           gradientStart: palette.hot,
           gradientEnd: palette.sun,
+          gradientAngle: DEFAULT_COLOR.gradientAngle,
           glowColor: palette.hot,
           outlineColor: project.invertCanvas ? palette.dark.ink : palette.light.ink,
         },

@@ -61,6 +61,7 @@ export function TextPanel({ controller }: { controller: ProjectController }) {
   }, [autoApply, suggestedId]);
 
   const runDirector = () => {
+    if (!brief.trim()) return;
     const result = direct(brief);
     update((previous) => applyLook(previous, result.look, result.templateId), {
       tag: "director",
@@ -220,7 +221,7 @@ export function TextPanel({ controller }: { controller: ProjectController }) {
 
       <div className="flex flex-wrap gap-1.5">
         <Badge variant="outline" className="tabular font-mono text-[0.65rem]">
-          {layer.text.trim() ? controller.project.layers.length : 0} layers
+          {project.layers.length} {project.layers.length === 1 ? "layer" : "layers"}
         </Badge>
         <Badge variant="outline" className="tabular font-mono text-[0.65rem]">
           {getTemplate(layer.templateId).name}

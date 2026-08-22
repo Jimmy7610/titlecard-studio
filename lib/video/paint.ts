@@ -25,6 +25,8 @@ export type PaintOptions = {
   project: ProjectState;
   /** Canvas pixels per layout pixel. */
   scale: number;
+  /** The output frame in layout units — the canvas, letterboxed to fit. */
+  frame: { width: number; height: number; offsetX: number; offsetY: number };
   /** Leave the canvas unpainted where the project is transparent. */
   alpha: boolean;
 };
@@ -62,6 +64,18 @@ function insetClip(value: string, box: BoxLayout): BoxLayout | null {
 
 function blurRadius(value: string): number {
   const match = /blur\(([\d.]+)px\)/.exec(value);
+  return match ? Number.parseFloat(match[1]) : 0;
+}
+
+/**
+ * The pixel size out of a canvas `font` shorthand.
+ *
+ * `parseFloat("normal 600 56px Outfit")` is NaN, so reading the size that way
+ * silently fell back to a constant — which made the outline one pixel wide and
+ * the glow one fixed radius, whatever the type was actually set at.
+ */
+function fontSizeOf(font: string): number {
+  const match = /(\d*\.?\d+)px/.exec(font);
   return match ? Number.parseFloat(match[1]) : 0;
 }
 
@@ -118,8 +132,11 @@ function paintBackground(
   options: PaintOptions,
   image: HTMLImageElement | null,
 ): void {
-  const { layout, theme, project, alpha } = options;
-  const { width, height } = layout;
+  const { theme, project, alpha, frame } = options;
+  // The frame, not the canvas: exporting a 16:9 project at 1080x1920 used to
+  // leave everything outside the canvas' own aspect unpainted, so the clip came
+  // out with a transparent band across it.
+  const { width, height } = frame;
 
   ctx.clearRect(0, 0, width, height);
   if (theme.transparent && alpha) return;
@@ -283,16 +300,18 @@ function paintLayer(
       ctx.textAlign = glyphVisible ? "center" : "left";
       const drawX = glyphVisible ? char.w / 2 : 0;
 
+      const fontSize = fontSizeOf(word.font) || 40;
+
       if (theme.textStroke !== "none" && project.color.outline > 0) {
         const [widthEm, strokeColour] = theme.textStroke.split(" ");
-        ctx.lineWidth = Number.parseFloat(widthEm) * Number.parseFloat(word.font) || 1;
+        ctx.lineWidth = Math.max(0.5, Number.parseFloat(widthEm) * fontSize);
         ctx.strokeStyle = strokeColour ?? "#000";
         ctx.strokeText(text, drawX, baseline + offsetY);
       }
 
       if (project.color.glow > 0) {
         ctx.shadowColor = project.color.glowColor;
-        ctx.shadowBlur = project.color.glow * (Number.parseFloat(word.font) || 40);
+        ctx.shadowBlur = project.color.glow * fontSize;
       }
 
       ctx.fillStyle = fillFor(ctx, char, theme, colour);
@@ -361,9 +380,14 @@ export function paintFrame(
   options: PaintOptions,
   image: HTMLImageElement | null = null,
 ): void {
+  const { scale, frame } = options;
+
   ctx.save();
-  ctx.setTransform(options.scale, 0, 0, options.scale, 0, 0);
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
   paintBackground(ctx, options, image);
+  // The layout is measured from the canvas' own origin, so the letterbox
+  // offset is applied once here rather than added to every box.
+  ctx.translate(frame.offsetX, frame.offsetY);
   for (const layer of options.layout.layers) paintLayer(ctx, layer, options);
   ctx.restore();
 }

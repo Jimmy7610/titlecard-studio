@@ -75,6 +75,8 @@ export function LayersPanel({ controller }: { controller: ProjectController }) {
   const duplicate = (id: string) => {
     const source = layers.find((entry) => entry.id === id);
     if (!source) return;
+    // `createLayer` mints the id last, so spreading the source here cannot hand
+    // the copy the original's identity.
     const copy = createLayer({
       ...source,
       name: `${source.name} copy`,
@@ -218,7 +220,10 @@ export function LayersPanel({ controller }: { controller: ProjectController }) {
           />
         </Field>
 
-        <Field label="Position" hint="Anchor first, then nudge. Offsets are percent of the canvas.">
+        <Field
+          label="Position"
+          hint="Anchor first, then nudge. The offset is a percentage of the text block, so it nudges by the same proportion of the type at any canvas size."
+        >
           <div className="grid grid-cols-3 gap-0.5 rounded-lg bg-muted/50 p-0.5">
             {ANCHORS.map((anchor) => (
               <button

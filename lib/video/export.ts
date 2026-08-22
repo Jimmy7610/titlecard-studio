@@ -74,7 +74,7 @@ type FrameJob = {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
   frames: number;
-  render: (frame: number) => void;
+  render: (frameIndex: number) => void;
   restore: () => void;
 };
 
@@ -106,7 +106,16 @@ async function prepare(
   const ctx = canvas.getContext("2d", { alpha });
   if (!ctx) throw new VideoExportError("This browser did not provide a 2D canvas context.");
 
-  const scale = config.width / layout.width;
+  // Fit rather than stretch: the output size is free to differ from the canvas
+  // aspect, so the canvas is scaled to fit and centred, and the background is
+  // painted across the whole frame behind it.
+  const scale = Math.min(config.width / layout.width, config.height / layout.height);
+  const frame = {
+    width: config.width / scale,
+    height: config.height / scale,
+    offsetX: (config.width / scale - layout.width) / 2,
+    offsetY: (config.height / scale - layout.height) / 2,
+  };
   const image = await loadBackgroundImage(project);
 
   const total = Math.min(MAX_FRAMES, Math.round(config.duration * config.fps));
@@ -122,10 +131,10 @@ async function prepare(
     canvas,
     ctx,
     frames: total,
-    render: (frame) => {
-      const time = (frame / config.fps) % Math.max(0.001, timeline.duration());
+    render: (index) => {
+      const time = (index / config.fps) % Math.max(0.001, timeline.duration());
       timeline.seek(time, false);
-      paintFrame(ctx, { layout, theme, project, scale, alpha }, image);
+      paintFrame(ctx, { layout, theme, project, scale, frame, alpha }, image);
     },
     restore: () => {
       timeline.seek(startedAt, false);

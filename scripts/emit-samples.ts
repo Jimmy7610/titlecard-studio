@@ -64,6 +64,40 @@ const SAMPLES: { name: string; project: ProjectState }[] = [
     },
   },
   {
+    // The case the underline rule exists for: descenders on the last line, a
+    // face whose metrics differ from the reference one, and tight leading.
+    name: "descenders",
+    project: {
+      ...DEFAULT_PROJECT,
+      typography: {
+        ...DEFAULT_PROJECT.typography,
+        fontId: "playfair",
+        weight: 500,
+        leading: 1.4,
+        tracking: 0.04,
+        fontSize: 8,
+      },
+      layers: [
+        {
+          ...DEFAULT_PROJECT.layers[0],
+          text: `Elegant
+typography gyjpq`,
+          templateId: "editorial-reveal",
+        },
+      ],
+    },
+  },
+  {
+    // The caret has to sit at the end of the phrase, on the same baseline.
+    name: "terminal",
+    project: {
+      ...DEFAULT_PROJECT,
+      paletteId: "terminal",
+      invertCanvas: true,
+      layers: [{ ...DEFAULT_PROJECT.layers[0], text: "Boot gyjpq", templateId: "terminal-type" }],
+    },
+  },
+  {
     name: "wordstyles",
     project: {
       ...DEFAULT_PROJECT,

@@ -40,10 +40,50 @@ export function wordStyleVars(style: WordStyle | undefined): Record<string, stri
   return vars;
 }
 
+/**
+ * A `style` attribute body, escaped.
+ *
+ * Not optional: the font stack is quoted (`"Outfit", sans-serif`), and writing
+ * it raw closed the attribute early — which silently dropped the font, size,
+ * weight, tracking, leading and alignment from every standalone export.
+ */
+export const declarationsAttr = (vars: Record<string, string>): string =>
+  escapeHtml(
+    Object.entries(vars)
+      .map(([key, value]) => `${key}:${value}`)
+      .join(";"),
+  );
+
+/**
+ * The join between two inline-level elements in pretty-printed markup.
+ *
+ * A newline between two inline-block spans is collapsible whitespace, and it
+ * renders — so the printed markup set every character a space apart and every
+ * word three, while the editor (whose JSX carries no whitespace between the
+ * same spans) set them flush. The comment swallows the break, so the file stays
+ * readable and the two renderers lay out identically.
+ */
+const seam = (indent: string) => `<!--\n${indent}-->`;
+
+/**
+ * The same declarations, keyed the way React wants them.
+ *
+ * `wordStyleVars` speaks CSS because the HTML exporter prints CSS. React does
+ * not: handing it `font-size` logs "Unsupported style property" on every styled
+ * word — in the editor and, worse, inside the component this app generates.
+ */
+export function wordStyleProps(style: WordStyle | undefined): Record<string, string> {
+  const props: Record<string, string> = {};
+  for (const [key, value] of Object.entries(wordStyleVars(style))) {
+    props[key.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())] = value;
+  }
+  return props;
+}
+
 const styleAttr = (vars: Record<string, string>): string => {
   const entries = Object.entries(vars);
   if (!entries.length) return "";
-  return ` style="${entries.map(([key, value]) => `${key}:${value}`).join(";")}"`;
+  return ` style="${declarationsAttr(vars)}"`;
 };
 
 /* ------------------------------------------------------------------ *
@@ -54,8 +94,10 @@ export function layerMarkup(model: LayerModel, indent: string): string {
   const pad = (depth: number) => indent + "  ".repeat(depth);
   const { split, layer, template } = model;
 
+  const lastLine = split.lines.length - 1;
+
   const lines = split.lines
-    .map((line) => {
+    .map((line, lineIndex) => {
       const words = line.words
         .map((word, wordIndex) => {
           const style = layer.wordStyles[word.index];
@@ -64,32 +106,37 @@ export function layerMarkup(model: LayerModel, indent: string): string {
           const chars = word.characters
             .map(
               (character) =>
-                `${pad(4)}<span class="stw-char"${
+                `<span class="stw-char"${
                   character.isGradient || style?.gradient ? ' data-gradient="true"' : ""
                 } data-index="${character.globalIndex}" data-word="${word.index}"><span class="stw-glyph"></span><span class="stw-real">${escapeHtml(
                   character.char,
                 )}</span></span>`,
             )
-            .join("\n");
+            .join(seam(pad(4)));
 
           const space =
             wordIndex < line.words.length - 1
-              ? `\n${pad(3)}<span class="stw-space"> </span>`
+              ? `${seam(pad(3))}<span class="stw-space"> </span>`
               : "";
 
-          return `${pad(3)}<span class="stw-word" data-word-index="${word.index}"${styleAttr(
+          return `<span class="stw-word" data-word-index="${word.index}"${styleAttr(
             wordStyleVars(style),
-          )}${gradientWord}>\n${pad(4)}<span class="stw-flash"></span>\n${chars}\n${pad(
-            3,
-          )}</span>${space}`;
+          )}${gradientWord}><span class="stw-flash"></span>${seam(pad(4))}${chars}</span>${space}`;
         })
-        .join("\n");
+        .join(seam(pad(3)));
 
-      return `${pad(2)}<span class="stw-line">\n${words}\n${pad(2)}</span>`;
+      // The caret belongs inside the last line. As a sibling of the line
+      // blocks it would open a line box of its own, parking it under the
+      // phrase and stretching the block past its own descent.
+      const caret =
+        template.showCursor && lineIndex === lastLine
+          ? `${seam(pad(3))}<span class="stw-cursor"></span>`
+          : "";
+
+      return `${pad(2)}<span class="stw-line">${seam(pad(3))}${words}${caret}</span>`;
     })
     .join("\n");
 
-  const cursor = template.showCursor ? `\n${pad(2)}<span class="stw-cursor"></span>` : "";
   const debris = DEBRIS.map(
     (particle) =>
       `${pad(2)}<span class="stw-debris" data-tone="${particle.tone}" style="left:${
@@ -97,9 +144,7 @@ export function layerMarkup(model: LayerModel, indent: string): string {
       }%;top:${particle.top}%;width:${particle.size}em;height:${particle.size}em"></span>`,
   ).join("\n");
 
-  const vars = Object.entries(layerVars(model))
-    .map(([key, value]) => `${key}:${value}`)
-    .join(";");
+  const vars = declarationsAttr(layerVars(model));
 
   return `${indent}<div class="stw-layer" data-stw-layer="${model.index}" style="${vars}">
 ${pad(1)}<span class="stw" data-stw-scope${
@@ -107,7 +152,7 @@ ${pad(1)}<span class="stw" data-stw-scope${
   }${split.profile.rtl ? ' dir="rtl"' : ""}>
 ${pad(2)}<span class="stw-sr">${escapeHtml(layer.text)}</span>
 ${pad(2)}<span class="stw-visual" aria-hidden="true">
-${lines}${cursor}
+${lines}
 ${pad(2)}<span class="stw-underline"></span>
 ${debris}
 ${pad(2)}</span>
@@ -152,7 +197,7 @@ export function layerData(model: LayerModel): SerialisedLayer {
         return {
           index: word.index,
           gradient: style?.gradient === true,
-          style: wordStyleVars(style),
+          style: wordStyleProps(style),
           chars: word.characters.map((character) => ({
             c: character.char,
             g: character.isGradient || style?.gradient === true,

@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated export artifacts. They are the *output* of this codebase, and
+    // linting them reports on code the linter cannot fix.
+    "public/__samples/**",
+    ".react-check/**",
   ]),
 ]);
 

@@ -29,7 +29,7 @@ across the stage. The DOM every template animates against:
 </span>
 ```
 
-Three relationships carry the whole system.
+Four relationships carry the whole system.
 
 **The mask is the font's own line box.** `.stw-word` is set to
 `line-height: normal`, so it is exactly one line box tall — the typeface's own
@@ -39,10 +39,28 @@ rest. Earlier versions pinned this to a constant calibrated against one typeface
 which clipped the tail of a `g` in anything with taller metrics.
 
 **Leading is not the mask.** The leading slider sets the strut and a *negative
-margin-bottom* (`calc(var(--stw-leading) * 1em - 1lh)`) on the word. An
-inline-block contributes its margin box to the line box, so lines pull as tight
-as `0.75` while the box the glyphs are clipped against never shrinks. Tight
-display leading and intact descenders, both.
+margin* (`calc((var(--stw-leading) * 1em - 1lh) / 2)`) split evenly above and
+below the word. An inline-block contributes its margin box to the line box, so
+lines pull as tight as `0.75` while the box the glyphs are clipped against never
+shrinks. Tight display leading and intact descenders, both.
+
+Splitting the correction rather than hanging all of it under the box is what
+keeps the mask centred on the line: the block then overhangs its own glyphs by
+the same amount at each end, so centring the block centres the type.
+
+**Decorations are measured from the descent, not from the box.** The block's
+bottom edge sits half a leading step above the last row's descent — exactly the
+word box's own negative margin. The gradient rule adds that step back:
+
+```css
+top: calc(100% + (1lh - var(--stw-leading) * 1em) / 2 + var(--stw-underline-gap));
+```
+
+`1lh` there is the font's own content area, because the rule sets
+`line-height: normal` on itself. So the rule lands on the descent in any face, at
+any size, at any leading, and the only figure in it that is a design choice
+rather than a font metric is the gap underneath. A fixed offset from the bottom
+edge — which is what this used to be — draws the rule through every descender.
 
 **The overlay never leaves the flow.** `.stw-real` always holds the layout, so
 substituting a full-width `█` for an `i` during a decode cannot reflow the line —

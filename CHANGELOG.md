@@ -1,5 +1,93 @@
 # Changelog
 
+## Stabilisation pass on v2
+
+A QA pass over the merged v2: every template, every face, every export path
+driven in a real browser rather than read. No new features. Everything below is
+a defect that was reachable from the UI.
+
+### Typography
+
+- **The gradient rule cut through descenders.** It was pinned `0.17em` above the
+  block's bottom edge — but the block ends *above* the last row's descent, by
+  the word box's own negative leading margin. The rule now adds that step back
+  and reads the font's content area through `1lh`, so it clears the ink in every
+  built-in face at every size and leading. Verified by measuring the rule
+  against `actualBoundingBoxDescent` across 14 faces x 9 phrases x 7 size and
+  leading combinations.
+- **The leading correction is split above and below the mask** instead of hung
+  entirely under it. The block now overhangs its glyphs equally at both ends, so
+  a centred layer is centred on the type rather than roughly 0.09em below it.
+- **The terminal caret rendered on a line of its own**, centred under the phrase
+  rather than after it, and stretched the layer's box by a whole line — which
+  pushed the text visibly off centre in every caret template. It is emitted
+  inside the last line now, in the preview and in both exports.
+- **A word carrying a size multiplier sat off the line's baseline** by most of
+  an ascender. The mask box is bottom-aligned rather than top-aligned, which
+  brings it to within a descender — the closest CSS can get for a box that clips.
+- **The typeface picker kept a weight the new face does not ship**, so the
+  control read 600 over a list whose only entry was 400 and the preview rendered
+  a synthesised bold. Switching face now snaps to the nearest real weight.
+
+### Export
+
+- **The standalone page lost its typography entirely.** The layer's custom
+  properties are written into a `style` attribute, and the font stack is quoted
+  — so the attribute closed on `--stw-font:"` and everything after it (font,
+  size, weight, tracking, leading, alignment) was dropped. Exported pages fell
+  back to Times at 4rem. The attribute is escaped now.
+- **The printed markup set every character a space apart** and every word three:
+  a newline between two `inline-block` spans is collapsible whitespace, and it
+  renders. The editor's JSX carries none, so the two disagreed by about 0.17em
+  per glyph. The seams are HTML comments now, and the file stays readable.
+- **Word styling reached React with CSS keys** (`font-size`, `text-shadow`),
+  which logs "Unsupported style property" for every styled word — in the editor
+  and inside the generated component. The exporters get CSS, React gets React.
+- **The rasteriser read the font size out of a canvas `font` shorthand with
+  `parseFloat`**, which is `NaN`, so the outline was always one pixel wide and
+  the glow always one fixed radius whatever the type was set at.
+- **A video exported at an aspect the canvas does not have left a transparent
+  band** across the frame. The canvas is fitted and centred, and the background
+  is painted across the whole frame behind it.
+- **The video length defaulted to a constant four seconds**; it now starts from
+  the animation's own duration.
+
+### Editor
+
+- **Space stopped activating any focused control.** The bare-key shortcuts
+  preempted the default without checking what had focus, so Space, `r`, `l` and
+  the arrow keys were taken from every button, switch, tab and select in the
+  app. They only fire when nothing is listening for the key already.
+- **Duplicating a layer gave the copy the original's id**, so React warned about
+  the duplicate key, editing one edited both, and deleting one deleted both.
+  `createLayer` now mints the id last and will not accept one.
+- **The transport read its own buttons rather than the timeline.** Play/pause
+  disagreed with reality after the Space shortcut, after `r`, and whenever a
+  non-looping animation simply ended — and pressing play on a finished timeline
+  did nothing at all. The playback rate also silently reset to 1x whenever the
+  timeline was rebuilt while the control kept claiming 2x.
+- **"Reset to palette" also switched off glow, drop shadow, outline and text
+  opacity** — controls in a different section that have nothing to do with the
+  palette.
+- **The Surprise Me step arrows were live-looking controls that did nothing**
+  before the first roll; they disable themselves now.
+- **The word-styling panel kept its selection across a layer change**, pointing
+  the controls at a different word.
+- Preset import clamped every number to its own wider bounds, so a file could
+  import a value no slider can reach and leave that control pinned at its end
+  stop. Every clamp is the control's own range now.
+- A preset describing more layers than the project has no longer drops them, and
+  a saved preset offers the phrase it was saved with — which is what the panel
+  already promised.
+- The context panel starts closed below 1420px, where three columns leave the
+  preview about 250px wide.
+
+### Tests
+
+`tests/export-parity.test.ts` covers the export defects above — the escaped
+style attribute, the whitespace seams, the caret's position, React style keys,
+and the two CSS invariants the underline geometry rests on. 52 tests to 58.
+
 ## v2 — Motion Typography Studio
 
 A demo with six animations became an editor. Nothing that worked before was

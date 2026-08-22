@@ -40,6 +40,13 @@ import { cn } from "@/lib/utils";
 export function RightPanel({ controller }: { controller: ProjectController }) {
   const { project, layer, updateLayer } = controller;
   const [selected, setSelected] = React.useState<number | null>(null);
+  // Word indices are per layer, so a selection cannot follow the user across
+  // one — it would point the styling controls at a different word entirely.
+  const [selectionLayer, setSelectionLayer] = React.useState(layer.id);
+  if (selectionLayer !== layer.id) {
+    setSelectionLayer(layer.id);
+    setSelected(null);
+  }
 
   const template = getTemplate(layer.templateId);
   const split = React.useMemo(
@@ -175,6 +182,8 @@ export function RightPanel({ controller }: { controller: ProjectController }) {
                 <InfoNote>
                   Select a word above to give it its own colour, weight, size, glow or
                   entrance delay. Everything else in the phrase keeps the project style.
+                  Styling is held by word position, so rewriting the phrase moves it —
+                  it is kept rather than dropped when a phrase gets shorter.
                 </InfoNote>
               ) : (
                 <div className="space-y-4 rounded-xl border border-border bg-card/40 p-3">

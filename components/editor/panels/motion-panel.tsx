@@ -42,9 +42,15 @@ export function MotionPanel({ controller }: { controller: ProjectController }) {
   const { project, update, layer } = controller;
   const motion = project.motion;
 
-  /** A small ring so Surprise Me can be stepped through, not just re-rolled. */
-  const history = React.useRef<number[]>([]);
-  const cursor = React.useRef(-1);
+  /**
+   * A small ring so Surprise Me can be stepped through, not just re-rolled.
+   *
+   * State rather than a ref: the step buttons have to be able to disable
+   * themselves, and before the first roll there is nothing to step to — they
+   * were previously live-looking controls that did nothing at all.
+   */
+  const [history, setHistory] = React.useState<number[]>([]);
+  const [cursor, setCursor] = React.useState(-1);
 
   const setMotion = (patch: Partial<MotionConfig>, tag: string) =>
     update({ motion: { ...motion, ...patch } }, { tag });
@@ -61,16 +67,17 @@ export function MotionPanel({ controller }: { controller: ProjectController }) {
 
   const roll = () => {
     const seed = Math.floor(Math.random() * 1e9);
-    history.current = [...history.current.slice(0, cursor.current + 1), seed].slice(-24);
-    cursor.current = history.current.length - 1;
+    const next = [...history.slice(0, cursor + 1), seed].slice(-24);
+    setHistory(next);
+    setCursor(next.length - 1);
     applySeed(seed);
   };
 
   const stepHistory = (direction: -1 | 1) => {
-    const next = cursor.current + direction;
-    if (next < 0 || next >= history.current.length) return;
-    cursor.current = next;
-    applySeed(history.current[next]);
+    const next = cursor + direction;
+    if (next < 0 || next >= history.length) return;
+    setCursor(next);
+    applySeed(history[next]);
   };
 
   return (
@@ -164,6 +171,7 @@ export function MotionPanel({ controller }: { controller: ProjectController }) {
             size="sm"
             variant="outline"
             aria-label="Previous variation"
+            disabled={cursor <= 0}
             onClick={() => stepHistory(-1)}
           >
             ←
@@ -173,6 +181,7 @@ export function MotionPanel({ controller }: { controller: ProjectController }) {
             size="sm"
             variant="outline"
             aria-label="Next variation"
+            disabled={cursor < 0 || cursor >= history.length - 1}
             onClick={() => stepHistory(1)}
           >
             →

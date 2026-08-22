@@ -34,6 +34,7 @@ import type { StageHandle } from "@/components/editor/stage";
 import { TemplateGallery } from "@/components/editor/template-gallery";
 import { TimelineBar } from "@/components/editor/timeline-bar";
 import { Button } from "@/components/ui/button";
+import { useClientValue } from "@/hooks/use-client-value";
 import { useProject } from "@/hooks/use-project";
 import { buildExportModel } from "@/lib/export";
 import { getPalette, gradientOf } from "@/lib/palettes";
@@ -84,6 +85,54 @@ function isTyping(target: EventTarget | null): boolean {
   return element.isContentEditable || TYPING_TAGS.has(element.tagName);
 }
 
+/**
+ * Anything that already answers to a key press.
+ *
+ * The bare-key shortcuts below call `preventDefault`, which on a focused
+ * control means taking the key away from it: Space stopped activating buttons
+ * and switches anywhere in the editor, and the arrow keys were claimed from
+ * whatever had focus. A shortcut only fires when nothing is listening for the
+ * key already.
+ */
+const INTERACTIVE_SELECTOR = [
+  "a[href]",
+  "button",
+  "input",
+  "select",
+  "textarea",
+  "summary",
+  "[contenteditable]",
+  '[role="button"]',
+  '[role="checkbox"]',
+  '[role="combobox"]',
+  '[role="menuitem"]',
+  '[role="option"]',
+  '[role="radio"]',
+  '[role="slider"]',
+  '[role="switch"]',
+  '[role="tab"]',
+  '[role="textbox"]',
+].join(",");
+
+function isInteractive(target: EventTarget | null): boolean {
+  const element = target as HTMLElement | null;
+  if (!element || typeof element.closest !== "function") return false;
+  return element.closest(INTERACTIVE_SELECTOR) !== null;
+}
+
+/**
+ * Whether there is room for three columns and a usable canvas.
+ *
+ * At the breakpoint itself the rail, both panels and their borders leave the
+ * preview about 250px wide, which is not a preview. The context panel is a
+ * panel, so it starts closed on those screens rather than crowding out the
+ * thing being made — the header toggle opens it again.
+ */
+const WIDE_ENOUGH_FOR_THREE_COLUMNS = 1420;
+
+const readRoomForContext = () =>
+  typeof window === "undefined" || window.innerWidth >= WIDE_ENOUGH_FOR_THREE_COLUMNS;
+
 export function Editor() {
   const controller = useProject();
   const { project, layer, update, updateLayer, undo, redo, canUndo, canRedo, reset } =
@@ -91,7 +140,12 @@ export function Editor() {
 
   const [section, setSection] = React.useState<SectionId>("templates");
   const [exportOpen, setExportOpen] = React.useState(false);
-  const [rightOpen, setRightOpen] = React.useState(true);
+  // Matches the server's answer on the first paint, then reconciles.
+  const roomForContext = useClientValue(readRoomForContext, true);
+  const [rightOverride, setRightOverride] = React.useState<boolean | null>(null);
+  const rightOpen = rightOverride ?? roomForContext;
+  const setRightOpen = (next: (previous: boolean) => boolean) =>
+    setRightOverride(next(rightOpen));
   const [duration, setDuration] = React.useState(0);
 
   const stage = React.useRef<StageHandle>(null);
@@ -121,8 +175,9 @@ export function Editor() {
         return;
       }
       if (meta) return;
-      // Everything below is a bare key, so typing must never trigger it.
-      if (isTyping(event.target)) return;
+      // Everything below is a bare key that preempts the default, so it must
+      // never reach a control that already answers to that key.
+      if (isInteractive(event.target)) return;
 
       switch (event.key) {
         case " ":

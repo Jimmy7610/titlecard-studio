@@ -84,9 +84,16 @@ export function createLayerId(): string {
   return `layer-${Date.now().toString(36)}-${layerCounter.toString(36)}`;
 }
 
-export function createLayer(overrides: Partial<TextLayer> = {}): TextLayer {
+/**
+ * `id` is deliberately not overridable, and is assigned last.
+ *
+ * Duplicating a layer means spreading the source into the overrides, and the
+ * source carries an id — so an override that could win here handed the copy the
+ * original's id. Two layers then shared one identity: React warned about the
+ * duplicate key, editing one edited both, and deleting one deleted both.
+ */
+export function createLayer(overrides: Omit<Partial<TextLayer>, "id"> = {}): TextLayer {
   return {
-    id: createLayerId(),
     name: "Layer",
     text: "",
     templateId: "agent-reveal",
@@ -97,6 +104,7 @@ export function createLayer(overrides: Partial<TextLayer> = {}): TextLayer {
     wordStyles: {},
     visible: true,
     ...overrides,
+    id: createLayerId(),
   };
 }
 

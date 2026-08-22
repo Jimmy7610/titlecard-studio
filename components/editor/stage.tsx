@@ -128,8 +128,14 @@ export function Stage({ model, reduceMotion, onReady, ref }: StageProps) {
       toggle: () => {
         const timeline = master.current;
         if (!timeline) return;
-        if (timeline.paused() || !timeline.isActive()) timeline.play();
-        else timeline.pause();
+        if (!timeline.paused() && timeline.isActive()) {
+          timeline.pause();
+          return;
+        }
+        // Playing from the very end is a no-op in GSAP, so a finished
+        // non-looping timeline would simply ignore the play button.
+        if (timeline.progress() >= 1) timeline.restart();
+        else timeline.play();
       },
       replay: () => master.current?.restart(),
       seek: (seconds) => {

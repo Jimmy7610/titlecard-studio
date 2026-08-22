@@ -4,7 +4,7 @@ import * as React from "react";
 
 import { DEBRIS } from "@/lib/debris";
 import { layerVars } from "@/lib/export/css";
-import { wordStyleVars } from "@/lib/export/markup";
+import { wordStyleProps } from "@/lib/export/markup";
 import type { LayerModel } from "@/lib/export/model";
 
 /**
@@ -56,7 +56,7 @@ export function SplitLayer({ model }: { model: LayerModel }) {
                     <span
                       className="stw-word"
                       data-word-index={word.index}
-                      style={wordStyleVars(style) as React.CSSProperties}
+                      style={wordStyleProps(style) as React.CSSProperties}
                     >
                       <span className="stw-flash" data-stw-flash />
                       {word.characters.map((character) => (
@@ -83,10 +83,15 @@ export function SplitLayer({ model }: { model: LayerModel }) {
                   </React.Fragment>
                 );
               })}
+              {/* Inside the last line, not after it: an inline-block sibling of
+                  the line blocks would open a line box of its own, parking the
+                  caret under the phrase and stretching the layer's box. */}
+              {template.showCursor && line.index === split.lines.length - 1 ? (
+                <span className="stw-cursor" data-stw-cursor />
+              ) : null}
             </span>
           ))}
 
-          {template.showCursor ? <span className="stw-cursor" data-stw-cursor /> : null}
           <span className="stw-underline" data-stw-underline />
 
           {DEBRIS.map((particle) => (

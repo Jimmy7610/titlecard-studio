@@ -19,7 +19,7 @@ import type { ProjectController } from "@/hooks/use-project";
 import { downloadFile, generate } from "@/lib/export";
 import { getPalette, gradientOf } from "@/lib/palettes";
 import { BUILTIN_PRESETS, applyPreset } from "@/lib/presets/builtin";
-import { PresetError, parsePreset } from "@/lib/presets/schema";
+import { PresetError, parsePreset, type ParsedPreset } from "@/lib/presets/schema";
 import {
   deletePreset,
   duplicatePreset,
@@ -30,6 +30,7 @@ import {
   type SavedPreset,
 } from "@/lib/storage";
 import { getTemplate } from "@/lib/templates";
+import type { ProjectState } from "@/lib/types";
 
 /**
  * Presets.
@@ -40,6 +41,38 @@ import { getTemplate } from "@/lib/templates";
  */
 /** Stable empty array — a fresh literal would re-render on every pass. */
 const EMPTY_SAVED: SavedPreset[] = [];
+
+/**
+ * Wraps a preset's look around the phrases already on screen.
+ *
+ * A preset that describes more layers than the project has used to lose them
+ * silently, so reopening a saved three-layer piece gave you one layer. The
+ * missing ones are created here with the look applied and no text — their
+ * phrases are offered through the same explicit opt-in as everything else.
+ */
+function withPresetLook(previous: ProjectState, parsed: ParsedPreset): ProjectState {
+  const merged = parsed.project.layers.map((source, index) => {
+    const existing = previous.layers[index];
+    if (!existing) return { ...source, text: "" };
+    return {
+      ...existing,
+      templateId: source.templateId,
+      glyphPool: source.glyphPool,
+      delay: source.delay,
+      position: source.position,
+      typography: source.typography,
+      wordStyles: source.wordStyles,
+    };
+  });
+
+  // Layers the preset says nothing about keep everything they had.
+  const layers = [...merged, ...previous.layers.slice(parsed.project.layers.length)];
+  const activeLayerId = layers.some((layer) => layer.id === previous.activeLayerId)
+    ? previous.activeLayerId
+    : layers[0].id;
+
+  return { ...parsed.project, layers, activeLayerId };
+}
 
 export function PresetsPanel({ controller }: { controller: ProjectController }) {
   const { project, update } = controller;
@@ -59,23 +92,7 @@ export function PresetsPanel({ controller }: { controller: ProjectController }) 
       const raw = await file.text();
       const parsed = parsePreset(raw);
 
-      update(
-        (previous) => ({
-          ...parsed.project,
-          // The imported look, wrapped around the phrases already on screen.
-          layers: previous.layers.map((layer, index) => ({
-            ...layer,
-            templateId: parsed.project.layers[index]?.templateId ?? layer.templateId,
-            glyphPool: parsed.project.layers[index]?.glyphPool ?? layer.glyphPool,
-            delay: parsed.project.layers[index]?.delay ?? layer.delay,
-            position: parsed.project.layers[index]?.position ?? layer.position,
-            typography: parsed.project.layers[index]?.typography ?? layer.typography,
-            wordStyles: parsed.project.layers[index]?.wordStyles ?? layer.wordStyles,
-          })),
-          activeLayerId: previous.activeLayerId,
-        }),
-        { tag: "import" },
-      );
+      update((previous) => withPresetLook(previous, parsed), { tag: "import" });
 
       const carriesText = parsed.texts.some((text) => text.trim().length > 0);
       setOfferedTexts(carriesText ? parsed.texts : null);
@@ -110,6 +127,12 @@ export function PresetsPanel({ controller }: { controller: ProjectController }) 
     setOfferedTexts(null);
   };
 
+  // The offer lives in the Files section; a saved preset can raise it too.
+  const offerRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (offeredTexts) offerRef.current?.scrollIntoView({ block: "nearest" });
+  }, [offeredTexts]);
+
   const handleSave = () => {
     const label = name.trim() || `${getTemplate(activeTemplateId).name} look`;
     setSaved(savePreset(label, project));
@@ -120,20 +143,17 @@ export function PresetsPanel({ controller }: { controller: ProjectController }) 
   const applySaved = (preset: SavedPreset) => {
     try {
       const parsed = readSavedPreset(preset);
-      update(
-        (previous) => ({
-          ...parsed.project,
-          layers: previous.layers.map((layer, index) => ({
-            ...layer,
-            templateId: parsed.project.layers[index]?.templateId ?? layer.templateId,
-            glyphPool: parsed.project.layers[index]?.glyphPool ?? layer.glyphPool,
-            wordStyles: parsed.project.layers[index]?.wordStyles ?? layer.wordStyles,
-          })),
-          activeLayerId: previous.activeLayerId,
-        }),
-        { tag: `saved-${preset.id}` },
-      );
-      toast.success(`Applied "${preset.name}"`);
+      update((previous) => withPresetLook(previous, parsed), { tag: `saved-${preset.id}` });
+
+      // A saved preset carries the phrase it was saved with. Offering it is
+      // what makes "reopen a finished piece" true, without a style preset ever
+      // overwriting the words on its own.
+      const carriesText = parsed.texts.some((text) => text.trim().length > 0);
+      setOfferedTexts(carriesText ? parsed.texts : null);
+
+      toast.success(`Applied "${preset.name}"`, {
+        description: carriesText ? "Its text is offered below." : undefined,
+      });
     } catch {
       toast.error("That saved preset could not be read", {
         description: "It may have been written by an incompatible build.",
@@ -224,6 +244,8 @@ export function PresetsPanel({ controller }: { controller: ProjectController }) 
                   <Input
                     autoFocus
                     value={renameDraft}
+                    // Renaming usually means replacing, not appending.
+                    onFocus={(event) => event.currentTarget.select()}
                     onChange={(event) => setRenameDraft(event.target.value)}
                     onBlur={() => {
                       setSaved(renamePreset(preset.id, renameDraft));
@@ -322,7 +344,10 @@ export function PresetsPanel({ controller }: { controller: ProjectController }) 
         </div>
 
         {offeredTexts ? (
-          <div className="space-y-2 rounded-lg border border-primary/25 bg-primary/5 p-2.5">
+          <div
+            ref={offerRef}
+            className="space-y-2 rounded-lg border border-primary/25 bg-primary/5 p-2.5"
+          >
             <p className="text-[0.7rem] leading-relaxed">
               That preset also carried text:{" "}
               <span className="font-medium text-foreground">

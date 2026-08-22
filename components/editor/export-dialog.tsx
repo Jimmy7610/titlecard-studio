@@ -123,15 +123,22 @@ function ExportPanel({
 
   const [formats] = React.useState<VideoFormat[]>(supportedVideoFormats);
   const [formatId, setFormatId] = React.useState<string>(() => supportedVideoFormats()[0]?.id ?? "");
-  const [config, setConfig] = React.useState<VideoExportConfig>(() => ({
-    // Even edges: some encoders pad odd dimensions and shift the whole frame.
-    width: Math.round(project.canvas.width / 2) * 2,
-    height: Math.round(project.canvas.height / 2) * 2,
-    fps: 30,
-    duration: 4,
-    transparent: project.background.mode === "transparent",
-    loops: 1,
-  }));
+  const [config, setConfig] = React.useState<VideoExportConfig>(() => {
+    // The animation's own length, not a constant: a 2.3s title exported at a
+    // fixed four seconds ends on nearly two seconds of a still frame.
+    const timelineSeconds = stage.current?.timeline()?.duration() ?? 0;
+    const duration = timelineSeconds > 0.5 ? Math.min(MAX_DURATION, Math.ceil(timelineSeconds * 2) / 2) : 4;
+
+    return {
+      // Even edges: some encoders pad odd dimensions and shift the whole frame.
+      width: Math.round(project.canvas.width / 2) * 2,
+      height: Math.round(project.canvas.height / 2) * 2,
+      fps: 30,
+      duration,
+      transparent: project.background.mode === "transparent",
+      loops: 1,
+    };
+  });
   const [busy, setBusy] = React.useState<null | { label: string; done: number; total: number }>(
     null,
   );
