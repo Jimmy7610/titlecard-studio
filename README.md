@@ -1,18 +1,23 @@
-# titlecard
+# Motion Typography Studio
 
-A title card is an animated wordmark that opens something. This generates them.
+A browser text-animation studio built on **Next.js 16**, **TypeScript**,
+**Tailwind v4**, **GSAP 3** and **Base UI**. Type anything, pick any animation,
+style it, and export it as a standalone page, a React component, a GSAP
+timeline, a preset, a video or a PNG sequence.
 
-Bounded, mask-based typography animations built with **Next.js 16**, **TypeScript**,
-**Tailwind v4**, **GSAP 3** and **shadcn/ui**.
+```bash
+npm install
+npm run dev
+```
 
-Every reveal happens *inside the word's own bounding box*. No character ever
-travels across the stage.
+Node 20+ (Tailwind v4). Open <http://localhost:3000>.
 
 ---
 
-## The constraint
+## The constraint everything is built on
 
-The DOM every template animates against:
+Every reveal happens *inside the word's own bounding box*. No character travels
+across the stage. The DOM every template animates against:
 
 ```html
 <span class="stw-word">           <!-- overflow: hidden — the mask box -->
@@ -24,178 +29,317 @@ The DOM every template animates against:
 </span>
 ```
 
-Two relationships carry the whole system.
+Three relationships carry the whole system.
 
-**The mask.** `.stw-word` is exactly `--stw-mask` em tall. A character parked at
-`translateY(110%)` sits `1.1 ×` that height down — fully clear of the mask, with
-headroom left over for the 5° rotation. `--stw-mask` is pinned at `1.25`, the
-height of Outfit's own content area; measured below that, the tail of a `g` is
-clipped at rest.
+**The mask is the font's own line box.** `.stw-word` is set to
+`line-height: normal`, so it is exactly one line box tall — the typeface's own
+content area, whatever face is loaded. A character parked at `translateY(110%)`
+sits clear of it with headroom to spare, and a descender can never be clipped at
+rest. Earlier versions pinned this to a constant calibrated against one typeface,
+which clipped the tail of a `g` in anything with taller metrics.
 
 **Leading is not the mask.** The leading slider sets the strut and a *negative
-margin-bottom* on the word. An inline-block contributes its margin box to the
-line box, so lines pull as tight as `0.85` while the box the glyphs are clipped
-against never shrinks. Tight display leading and intact descenders, both.
+margin-bottom* (`calc(var(--stw-leading) * 1em - 1lh)`) on the word. An
+inline-block contributes its margin box to the line box, so lines pull as tight
+as `0.75` while the box the glyphs are clipped against never shrinks. Tight
+display leading and intact descenders, both.
 
-**The overlay.** `.stw-real` never leaves the flow, so substituting a full-width
-`█` for an `i` during a decode cannot reflow the line — the overlay is painted
-on top of a slot that is already the right size.
+**The overlay never leaves the flow.** `.stw-real` always holds the layout, so
+substituting a full-width `█` for an `i` during a decode cannot reflow the line —
+the overlay is painted on top of a slot that is already the right size.
 
-`lib/split.ts` produces this structure. It splits with `Array.from` so
-astral-plane characters are not torn into surrogate halves, and it flags the
-trailing digit run of the final word (`Agent 3` → `3`) for the
-`background-clip: text` gradient.
+A handful of templates — the ones whose whole idea is oversize scale or a seeded
+scatter — opt out of the clip with `unmasked: true`, because the mask does not
+bound those, it amputates them.
+
+---
+
+## The editor
+
+Nine sections on the left, the canvas in the middle, context settings on the
+right, transport along the bottom.
+
+| Section | What it holds |
+|---|---|
+| **Templates** | The full library as a gallery. Cards animate *your* phrase on hover. Favourites are kept locally. |
+| **Text** | Phrase (multi-line), Smart Suggest, and the Style Director. |
+| **Typography** | 14 curated faces plus your own uploads, size, weight, tracking, leading, alignment, case, italic, and the animated unit. |
+| **Style** | Palette, dark canvas tones, and — behind a toggle — custom text/accent/gradient colours, glow, shadow, outline, opacity. |
+| **Motion** | Speed, stagger, delay, easing, loop and hold. Surprise Me lives here. |
+| **Background** | Solid, gradient, transparent or image, plus optional grid, vignette, accent glow, colour cloud and film grain. |
+| **Canvas** | Format presets, custom size, aspect readout, orientation swap, safe zones. |
+| **Layers** | Add, duplicate, reorder, hide and delete text layers; per-layer position, delay and size. |
+| **Presets** | 14 built-in looks, your saved presets, and JSON import/export. |
+
+The canvas is laid out at a real pixel width rather than scaled with a CSS
+transform, because the display size is expressed in `cqw` against the canvas —
+so the preview measures type exactly the way an export will, at any zoom.
+
+---
 
 ## Templates
 
-| Template | Family | Motion |
-|---|---|---|
-| **Agent Reveal** | mask | `translateY(110%) rotate(5deg)` → `0` on a sharp `CustomEase`. Colour resolves hot → ink, a gradient rule sweeps and retracts, pixel debris strobes. |
-| **Weightless Blur** | mask | Characters surface from the lower half of the mask out of an 11px defocus. The blur halo is clipped by the mask — that clipping *is* the soft edge. |
-| **Glitch Mask** | mask | Four seeded `inset()` clip paths per character, stepped rather than eased. Colour and jitter run on the same stepped clock. |
-| **Ribbon Wipe** | mask | An accent ribbon sweeps each word and leaves the letters behind it. Glyphs are tinted to the canvas colour under the ribbon, so they read as knocked out of the block. |
-| **Glyph Decode** | terminal | TUI scramble. Each slot cycles the glyph pool at ~22 swaps a second, then locks with a stepped colour flash. A block cursor blinks until the last slot resolves. |
-| **Odometer Roll** | terminal | A reel of glyphs rolls down through each slot before the real character lands. The mask is what clips the reel — the template that shows most directly why it exists. |
+28 templates in six categories. Six are the originals, hand-written; the rest are
+declarative `MotionSpec` data.
 
-Add one by appending a `TemplateDefinition` to `lib/templates.ts`. Each receives a
-`gsap.core.Timeline` plus resolved character, word, debris, underline and cursor
-nodes, the live canvas palette, and the active glyph pool.
+| Category | Templates |
+|---|---|
+| **Clean** | Fade Up · Focus In · Line Mask · Slide Reveal · Soft Reveal · Weightless Blur |
+| **Cinematic** | Agent Reveal · Dramatic Mask · Film Title · Letterbox Reveal · Light Sweep |
+| **Tech** | Data Stream · Glitch Mask · Glyph Decode · Odometer Roll · Scanline · Terminal |
+| **Social** | Bounce Reveal · Pop Caption · Punch Words · Zoom Impact |
+| **Luxury** | Editorial Reveal · Gold Sweep · Luxury Tracking · Ribbon Wipe |
+| **Experimental** | Particle Assemble · Split Reveal · Wave |
+
+**Every template works with every phrase.** Nothing is gated on the words you
+typed — that gate is the single biggest thing this version removed.
+
+### Adding one
+
+Append a `MotionSpec` to `lib/templates/library.ts`. A spec is data: a list of
+steps with targets, vars, durations in reference seconds and `each` as a
+multiple of the project stagger. One description drives three consumers that
+must never disagree — the preview builds a GSAP timeline from it, the code
+exporters print GSAP source from it, and the video exporter records the timeline
+the preview built. Numbers are resolved once, in `resolveStep`, and both the
+builder and the printer consume that result, so exported code cannot drift away
+from what you are watching.
+
+The six original templates keep their imperative builders and their own
+hand-written source strings, because each encodes a decision that reads as a bug
+when generalised — the odometer's single driver for both reel offset and glyph,
+the ribbon's explicit `set` where a `fromTo` would leave the slab at the baseline
+opacity.
 
 ### Determinism
 
-Nothing visual uses `Math.random`. Glitch clip paths, jitter, debris positions
-and every scramble sequence come from a seeded `mulberry32` (`lib/random.ts`).
+Nothing visual uses `Math.random`. Glitch clip paths, jitter, debris positions,
+particle scatter and every scramble sequence come from a seeded `mulberry32`
+(`lib/random.ts`). The scramble templates go further: the tween drives a plain
+number and the glyph on screen is *derived* from it, so the rendered character is
+a pure function of timeline progress — scrubbing backwards or restarting
+reproduces the decode exactly.
 
-The scramble templates go further: the tween drives a plain number and the glyph
-on screen is *derived* from it. The rendered character is therefore a pure
-function of timeline progress — scrubbing backwards or restarting reproduces the
-decode exactly, which picking a glyph inside `onUpdate` would not.
+---
 
-## Semantic engine
+## Smart Suggest and the Style Director
 
-`lib/semantic-engine.ts` matches **whole normalised words** against a lexicon —
-never substrings, so `technique` does not trigger the `tech` rule. The template
-with the most hits wins; ties break toward the earliest match. When nothing
-matches, the manual selection is used.
+The old semantic engine matched a word and *forced* a template, which meant a
+phrase containing "system" could not be animated any other way. It now only ever
+proposes.
 
-| Group | Forces | Tokens |
-|---|---|---|
-| Authoritative | Agent Reveal | agent, corporate, premium, enterprise, studio, launch, flagship, `3` |
-| Atmospheric | Weightless Blur | calm, smooth, breathe, soft, slow, quiet, drift, gentle, flow |
-| Machinic | Glitch Mask | tech, build, glitch, hack, code, system, protocol, render, compile |
-| Terminal | Glyph Decode | terminal, decode, boot, init, scan, cipher, signal, loading, shell |
-| Numeric | Odometer Roll | counter, ticker, count, score, stats, metrics, index, total |
-| Editorial | Ribbon Wipe | headline, feature, highlight, brand, bold, editorial, reveal |
+- **Smart Suggest** reads the phrase against a bilingual lexicon and offers a
+  complete look — animation, palette, typeface, tempo, stagger, tracking,
+  background — with **Apply**, **Regenerate** and **Ignore**. Your manual choice
+  stands until you press Apply.
+- **Auto-apply** exists, off by default.
+- **Style Director** takes a free-text brief ("calm futuristic AI launch"),
+  scores every mood it touches and blends the top two. Structure comes from the
+  primary mood; only the continuous quantities are averaged, because
+  interpolating the categorical choices would produce a serif terminal in a
+  plasma palette — not a blend of two looks but the absence of either.
+- **Surprise Me** picks a style family and varies *inside* it, so a calm look
+  never gets an elastic bounce. Previous/next step through the variations.
 
-## Palettes
+Ten moods, English and Swedish. Swedish inflects heavily, so each mood may list
+stems matched as prefixes against words of five letters or more — `lanser`
+covers *lansering*, *lanserar*, *lanserat* without a table of forms per verb.
+Matching is on whole normalised words, so `technique` still does not trigger
+`tech`.
 
-Six ramps in `lib/palettes.ts`, each with light and dark canvas tones: **Agent**
-(sampled from the reference clip), **Terminal**, **Plasma**, **Ice**, **Ember**,
-**Mono**. They are written as inline custom properties on the stage, so a swap is
-one style update rather than a cascade of selectors — and because colour tweens
-read their targets back off the live canvas, switching palette retints the
-animation rather than fighting it.
+Everything runs locally. No API key, and no network call. `direct(brief)` has
+the signature a hosted model would fill later — brief in, look out — so adding a
+provider is a swap in one function rather than a rewrite upstream.
+
+---
+
+## Text handling
+
+- **Grapheme segmentation** via `Intl.Segmenter`, with a hand-rolled cluster
+  walk as a fallback rather than `Array.from` — which tears emoji ZWJ sequences,
+  regional-indicator flags and combining marks into fragments.
+- `RÄKSMÖRGÅS`, `COATOR ✨ STUDIO`, `AI → FUTURE` and `🔥 BUILD 🔥` all animate as
+  the units a human would count.
+- **Complex scripts are protected.** Arabic, Hebrew, Devanagari, Thai and their
+  neighbours shape or reorder across characters, and an atomic inline-block
+  cannot be bidi-reordered or joined. Those phrases are widened to whole-word
+  boxes automatically and the layer is marked `dir="rtl"` where appropriate, so
+  the text stays correct instead of rendering reversed and broken. The editor
+  says when it has done this.
+- The animated unit is also a manual choice: per character, per word, or one box
+  for the whole line.
+
+---
+
+## Canvas formats
+
+16:9 · 9:16 · 1:1 · 4:5 · 21:9 · custom, with YouTube, TikTok/Reels/Shorts,
+Instagram square and portrait, and cinema presets. Safe-zone guides approximate
+each platform's UI overlay; they are editing guides and are never exported.
+
+---
+
+## Presets and project state
+
+- **14 built-in looks** — Cinematic Intro, Luxury Brand, AI Terminal, Soft
+  Minimal, Cyber Decode, Editorial, Product Launch, Gaming Reveal, Calm Future,
+  Creator Hook, Dark Technology, Neon Data, Minimal White, Ice Future.
+- **Save your own**, with rename, duplicate and delete, kept in `localStorage`.
+- **A preset is a look, never a document.** It carries no canvas size and no
+  per-word styling, and applying one cannot take your phrase away. A file that
+  *does* carry text says so and offers it as a separate action.
+- **Versioned schema.** Files written by version 1 are migrated on import rather
+  than rejected; a field from a newer build is ignored rather than fatal; an
+  out-of-range number is clamped; a colour that could escape a stylesheet is
+  refused; a remote background image is dropped rather than fetched on your
+  behalf.
+- **The session survives a refresh** — phrase, template, typography, colours,
+  canvas, background, layers. Reset Project clears it, with a confirmation.
+- **Undo/redo** with `Ctrl/⌘+Z` and `Ctrl/⌘+Shift+Z` (or `Ctrl+Y`). Slider drags
+  coalesce into one entry.
+
+---
 
 ## Export
 
 | Output | What you get |
 |---|---|
-| **Standalone page** `.html` | A complete document — markup, CSS, GSAP from CDN. Opens with a double-click. |
-| **React component** `.tsx` | Drop-in client component with the CSS inlined. Needs `gsap` and `@gsap/react`. |
-| **Preset** `.json` | Just the settings, for sharing a look. |
-| **Copy GSAP timeline** | The timeline code on its own, to the clipboard. Runs against the exported markup. |
+| **Standalone page** `.html` | A complete document — markup, CSS, fonts, GSAP from CDN. Opens with a double-click. |
+| **React component** `.tsx` | A drop-in client component with the CSS inlined and the phrase pre-segmented. Needs `gsap` and `@gsap/react`. Compiles under strict TypeScript. |
+| **Preset** `.json` | The full look, versioned and re-importable. |
+| **GSAP timeline** | The timeline code on its own, to the clipboard, with your actual timing, stagger and easing. |
+| **Video** `.webm` / `.mp4` | Recorded frame by frame from the running timeline. Only containers this browser will actually encode are offered. |
+| **PNG sequence** `.zip` | Numbered frames with alpha, for an editor. |
 
-All four bake in the current phrase, template, palette and every slider value.
-The generated timelines are real, runnable code rather than illustrative
-snippets — `lib/export.ts` owns the codegen so `lib/templates.ts` stays about
-motion.
+All of them bake in the current phrase, layers, template, word styling and every
+slider value.
 
-> The `.stw-*` CSS in `lib/export.ts` is a deliberate copy of the rules in
-> `app/globals.css`: an exported file has to stand alone with no build step, and
-> a stylesheet cannot be imported into TypeScript as a string. Keep the two in
-> step when the split primitives change.
+**The video exporter does not screen-capture.** It seeks the real GSAP timeline,
+reads the animated state back off the live DOM, and rasterises to a 2D canvas —
+so nothing else on your machine can get into the clip, and a slow frame stretches
+the export rather than dropping out of the video. Layout comes from the browser's
+own `offsetLeft`/`offsetTop`, which are unaffected by transforms, so kerning,
+tracking, font metrics and line breaking are the browser's, not a
+reimplementation.
 
-## GSAP lifecycle
+The `.stw-*` CSS has exactly one copy, in `lib/export/css.ts`. The editor injects
+that string and every export inlines it, so a preview and an exported file cannot
+drift apart through a stale stylesheet.
 
-`useGSAP` from `@gsap/react` is the cleanup mechanism — a `useLayoutEffect`
-wrapped in a `gsap.context`, so every tween created inside it reverts on unmount.
-Three details matter:
+---
 
-- **`revertOnUpdate: true`.** `useGSAP` reverts on unmount but *not* on
-  dependency change unless told to. Without it, switching templates leaves a
-  stale `filter` or `clip-path` on a character.
-- **Glyph overlays are cleared by hand.** `revert` restores inline styles, not
-  `textContent`. The stage empties every overlay before and after each build.
-- **Deferred unhide.** The markup renders with the finished text in the DOM. The
-  visual layer stays `visibility: hidden` until the timeline's initial state is
-  committed inside the layout effect — before the browser paints — so the
-  resting text is never flashed. The accessible phrase sits outside that wrapper
-  and is always exposed.
+## Keyboard
+
+| Key | Action |
+|---|---|
+| `Space` | Play / pause |
+| `R` | Replay |
+| `L` | Toggle loop |
+| `←` `→` | Step one frame |
+| `Shift` + `←` `→` | Step ten frames |
+| `Ctrl/⌘+Z` | Undo |
+| `Ctrl/⌘+Shift+Z`, `Ctrl+Y` | Redo |
+
+Bare-key shortcuts never fire while you are typing in a field.
+
+---
+
+## Accessibility
+
+The split spans are hidden from assistive technology and the untouched phrase is
+exposed once via `.stw-sr`, so a screen reader announces "MOTION STUDIO" rather
+than thirteen disconnected letters. Controls are labelled, focus is visible,
+every button is a real button, and sliders carry names.
 
 `prefers-reduced-motion: reduce` skips timeline construction entirely and commits
-the resting state instead of animating a shortened version.
+the resting state instead of animating a shortened version. **Reduce preview
+motion** in Motion → Advanced does the same on demand, without touching exports.
+
+---
 
 ## Known limitations
 
-These are measured, not suspected. Read them before adopting the export.
+Measured, not suspected.
 
-**The mask height is calibrated to one typeface.** `--stw-mask: 1.25` is Outfit's
-content area. Other faces measure differently — Inter 1.21, Playfair 1.33,
-Poppins 1.40, Noto Sans Thai 1.51, Noto Sans Arabic 2.11. Below the required
-height a font's descenders are clipped at rest; Poppins clips visibly. The fix
-is known and not yet applied: `line-height: normal` plus
-`margin-bottom: calc(var(--stw-leading) * 1em - 1lh)` derives the box per font
-in pure CSS, with no measurement and no flash-of-unstyled-text window.
-
-**Right-to-left scripts do not work, in two independent ways.** With Arabic the
-mask is far shorter than the content area, so `translateY(110%)` no longer hides
-the glyph and the text is visible before the animation starts — the core premise
-fails. Separately, wrapping each character in its own inline-block breaks the
-shaping run: `مرحبا` renders as `ابحرم`, reversed and 33% wider, because atomic
-inline boxes cannot be bidi-reordered. `Intl.Segmenter` does not fix this. RTL
-needs whole-word animation instead of per-character.
-
-**Per-character splitting costs kerning and ligatures.** Measured in Outfit:
+**Per-character splitting costs kerning and ligatures.** Measured in Outfit,
 `Toy` is 8.5% wider than unsplit text, `LTA` 9.9%, and the `fi` ligature never
 forms. The effect is font-dependent — faces without kern pairs are unaffected.
+Switch the animated unit to per word or per line if the measure matters more than
+the motion.
 
-**Grapheme clusters are split by code point.** `lib/split.ts` uses `Array.from`,
-which tears emoji ZWJ sequences, combining diacritics, Devanagari clusters and
-Thai into fragments. `Intl.Segmenter` with `granularity: "grapheme"` fixes all of
-these.
+**RTL and complex scripts animate per word, not per character.** This is a
+deliberate downgrade, not a fix: an inline-block cannot participate in a shaping
+run or be bidi-reordered, so per-character animation would render the text wrong.
+Whole-word boxes shape and reorder internally and stay correct.
 
-**The React export ships no `@font-face`.** It sets `font-family: Outfit` but
-loads nothing, so it silently falls back to `system-ui` and does not match the
-preview. The standalone HTML export does load the font correctly.
+**Google Fonts is a network dependency.** The thirteen built-in web faces are
+loaded on demand from `fonts.googleapis.com`. If it is blocked or offline the
+editor falls back to the system stack rather than hanging — the loader gives up
+after four seconds — but the preview will not match a machine that can reach it.
+An uploaded font has no such dependency and is embedded in exports.
 
-**The variable font axis is discarded.** `Outfit()` declares four discrete
-weights that all resolve to the same variable `woff2`. Declaring
-`font-weight: 100 900` instead would expose `wght` as a continuously animatable
-axis — arguably the most interesting unexploited axis for this kind of work.
+**Video export approximates three things.** Film grain is not painted (it is a
+blend-mode overlay), a gradient-filled glyph gets a per-glyph gradient rather than
+one spanning the whole line, and CSS filters other than `blur` are ignored.
+Everything else — transforms, clip paths, colours, glow, outline, the decode
+overlays, the debris — is read from the same elements the preview animates.
+
+**GIF is not offered.** `MediaRecorder` cannot produce one, and a hand-rolled
+quantiser and LZW encoder is a lot of surface area to get subtly wrong. WebM
+covers the same ground with better quality, and the PNG sequence covers anything
+an editor needs. MP4 appears only when the browser reports it can encode it —
+which today means recent Chrome and Safari.
+
+**Video is capped** at 900 frames and 30 seconds, and either canvas edge at
+4096px, to keep the tab responsive.
+
+**A custom font over ~1.6 MB is session-only.** It works for as long as the tab
+is open and embeds into exports, but it is not written to `localStorage`, which
+would blow the quota.
 
 **Everything plays on mount.** There is no trigger model — no ScrollTrigger, no
-in-view, no hover, no scrub — and no exit or reverse timeline. The handle exposes
-`replay()` only.
+in-view, no hover, no scrub — and no exit or reverse timeline in the exported
+output. The editor's transport can scrub; the exports play and loop.
 
-**The glyph pools fall outside the loaded subset.** The Blocks and Katakana pools
-are outside `latin`, and Outfit has no such glyphs, so scramble characters render
-in a fallback face with a different baseline before locking back to Outfit.
-
-## Running it
-
-```bash
-npm run dev
-```
-
-Requires Node 20+ (Tailwind v4). Press <kbd>R</kbd> anywhere outside a field to
-replay.
+---
 
 ## Layout
 
 ```
-app/            layout (fonts, theme), page (state), globals.css
-components/     animation-stage, control-panel, split-text, ui/ (shadcn)
-hooks/          use-split-text  (React wrapper over lib/split)
-lib/            templates, semantic-engine, palettes, glyphs, export,
-                split, settings, debris, random, gsap
+app/               layout (theme, fonts), page, globals.css (editor chrome only)
+components/
+  editor/          shell, canvas viewport, stage, transport, panels, dialogs
+  ui/              Base UI primitives
+hooks/             use-project (state + history), use-client-value
+lib/
+  animation/       spec, runtime builder, source emitter, effects, units, timing
+  templates/       types, legacy (the six originals), library (spec templates)
+  semantic/        lexicon (EN + SV), engine (suggest, director, surprise)
+  export/          model, css, markup, runtime, legacy-source, timeline, documents
+  presets/         schema (versioning + validation), builtin
+  video/           layout capture, canvas painter, recorder, zip
+  fonts, palettes, theme, split, segment, canvas-formats, easing, project, storage
+scripts/           check-exports, check-react, emit-samples
+tests/             segmentation, semantic, presets
 ```
+
+## Checks
+
+```bash
+npm run check
+```
+
+Runs lint, the unit tests, the codegen smoke test, the generated-React type
+check, and the production build. Individually:
+
+| Script | What it proves |
+|---|---|
+| `npm run test` | Segmentation, the bilingual lexicon, preset migration and validation, template and export configuration. |
+| `npm run check:exports` | Every template × every export kind × three phrases holds together, the generated JavaScript parses, presets round-trip, v1 migrates, multi-layer emits. |
+| `npm run check:react` | Every generated React component compiles under this project's strict TypeScript. |
+| `npm run lint` | ESLint, including the React Compiler rules. |
+| `npm run build` | The production build. |
+
+`npx tsx scripts/emit-samples.ts public/__samples` writes real export artifacts
+you can open in a browser — useful when a document parses fine and still renders
+nothing.
