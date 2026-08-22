@@ -1,0 +1,310 @@
+import { googleFontHref, GOOGLE_FONT_PRECONNECT } from "@/lib/fonts";
+import {
+  ANIMATED_BACKGROUND_CSS,
+  SPLIT_PRIMITIVES_CSS,
+  declarations,
+  embeddedFontFaces,
+  googleFontIds,
+  scopeVars,
+  strokeCss,
+} from "@/lib/export/css";
+import { DEBRIS_DATA, escapeHtml, layerData, layerMarkup } from "@/lib/export/markup";
+import type { ExportModel } from "@/lib/export/model";
+import { GSAP_CDN_VERSION } from "@/lib/export/runtime";
+import { scriptSource } from "@/lib/export/timeline";
+
+/**
+ * The two code documents.
+ *
+ * Both are built from the same `ExportModel` and both inline
+ * `SPLIT_PRIMITIVES_CSS` — the single copy of the `.stw-*` rules the editor
+ * also renders — so an export cannot drift away from the preview by way of a
+ * stale stylesheet.
+ */
+
+const RESET = `*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; padding: 0; }`;
+
+function fontLinks(model: ExportModel): string {
+  const ids = googleFontIds(model);
+  if (!ids.length) return "";
+
+  const preconnect = GOOGLE_FONT_PRECONNECT.map(
+    (origin) =>
+      `<link rel="preconnect" href="${origin}"${
+        origin.includes("gstatic") ? " crossorigin" : ""
+      } />`,
+  ).join("\n");
+
+  const sheets = ids
+    .map((id) => googleFontHref(id))
+    .filter((href): href is string => href !== null)
+    .map((href) => `<link rel="stylesheet" href="${href}" />`)
+    .join("\n");
+
+  return `${preconnect}\n${sheets}`;
+}
+
+function scopeCss(model: ExportModel, selector: string, framing: boolean): string {
+  const faces = embeddedFontFaces(model);
+  const stroke = strokeCss(model);
+  const ratio = (model.project.canvas.width / model.project.canvas.height).toFixed(6);
+
+  return `${faces ? `${faces}\n\n` : ""}${selector} {
+${declarations(scopeVars(model))}
+  --stw-ratio: ${ratio};
+  width: 100%;
+${
+  framing
+    ? `  /* Framing for the standalone page. A component root carries none of this. */
+  max-width: min(100%, calc(100vh * var(--stw-ratio)));
+  margin: 0 auto;`
+    : ""
+}
+}
+
+${SPLIT_PRIMITIVES_CSS}
+${model.project.background.animated ? `\n${ANIMATED_BACKGROUND_CSS}` : ""}
+${stroke ? `\n${stroke}` : ""}`;
+}
+
+function canvasMarkup(model: ExportModel, indent: string): string {
+  const grain = model.theme.grain > 0 ? `${indent}  <span class="stw-grain"></span>\n` : "";
+  const layers = model.layers
+    .map((layer) => layerMarkup(layer, `${indent}  `))
+    .join("\n");
+
+  return `${indent}<div class="stw-canvas"${
+    model.project.background.animated ? ' data-animated="true"' : ""
+  }>
+${grain}${layers}
+${indent}</div>`;
+}
+
+/* ------------------------------------------------------------------ *
+ * Standalone HTML
+ * ------------------------------------------------------------------ */
+
+export function standaloneHtml(model: ExportModel): string {
+  const title = model.layers[0]?.layer.text || model.project.name;
+  const templates = model.layers.map((layer) => layer.template.name).join(" · ");
+  const transparent = model.theme.transparent;
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${escapeHtml(title)}${templates ? ` — ${escapeHtml(templates)}` : ""}</title>
+${fontLinks(model)}
+<style>
+${RESET}
+
+html, body {
+  min-height: 100%;
+}
+
+body {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  /* Transparent projects paint nothing here either, so the page composites
+     against whatever it is embedded in rather than against an invented colour. */
+  background: ${transparent ? "transparent" : "#0b0f16"};
+}
+
+${scopeCss(model, ".stw-scope", true)}
+</style>
+</head>
+<body>
+
+<div class="stw-scope" id="stage">
+${canvasMarkup(model, "  ")}
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/${GSAP_CDN_VERSION}/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/${GSAP_CDN_VERSION}/CustomEase.min.js"></script>
+<script>
+gsap.registerPlugin(CustomEase);
+
+${scriptSource(model, "document.getElementById(\"stage\")")}
+</script>
+
+</body>
+</html>
+`;
+}
+
+/* ------------------------------------------------------------------ *
+ * React component
+ * ------------------------------------------------------------------ */
+
+/** Escapes a string for embedding inside a generated template literal. */
+function forTemplateLiteral(source: string): string {
+  return source.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g, "\\${");
+}
+
+export function reactComponent(model: ExportModel): string {
+  const layers = model.layers.map((layer) => layerData(layer));
+  const templates = model.layers.map((layer) => layer.template.name).join(" · ");
+  const customFonts = model.fonts.filter((font) => font.custom !== null);
+  const googleIds = googleFontIds(model);
+
+  const fontNote = googleIds.length
+    ? `//   ${googleIds
+        .map((id) => googleFontHref(id))
+        .filter(Boolean)
+        .join("\n//   ")}
+//
+// Load those stylesheets however your app loads fonts (next/font, a <link> in
+// your document head, or an @import). Without them the component falls back to
+// the system stack and will not match the preview.`
+    : "// No external fonts are required.";
+
+  const customNote = customFonts.length
+    ? `//
+// The uploaded face "${customFonts[0].name}" is embedded as a @font-face below,
+// so this file carries its own bytes and needs nothing installed.`
+    : "";
+
+  return `"use client";
+
+// ${templates || "Semantic Text Animator"}
+// Generated by the Semantic Text Animator.
+//
+//   npm i gsap @gsap/react
+//
+// FONTS
+${fontNote}${customNote}
+//
+// TO REBRAND: every colour is a custom property on the root element. Override
+// them from your own stylesheet — you do not need to regenerate this file:
+//
+//   .stw-scope { --stw-hot: var(--brand-500); --stage-ink: var(--fg); }
+//
+// The word span carries overflow: hidden and is exactly one line box tall at
+// line-height: normal, so a character at translateY(110%) clears its own mask
+// whatever typeface is loaded. Leading is applied as a negative margin instead,
+// so pulling lines tight never shrinks the box the glyphs are clipped against.
+
+import * as React from "react";
+import { useGSAP } from "@gsap/react";
+import { gsap } from "gsap";
+import { CustomEase } from "gsap/CustomEase";
+
+gsap.registerPlugin(useGSAP, CustomEase);
+
+type Char = { c: string; g: boolean; i: number; w: number };
+type Word = { chars: Char[]; style: Record<string, string>; gradient: boolean; index: number };
+type Layer = {
+  index: number;
+  text: string;
+  rtl: boolean;
+  unmasked: boolean;
+  cursor: boolean;
+  vars: Record<string, string>;
+  lines: Word[][];
+};
+
+/** Pre-segmented at export time — emoji and diacritics are already whole. */
+const LAYERS: Layer[] = ${JSON.stringify(layers, null, 2)};
+
+const DEBRIS = ${JSON.stringify(DEBRIS_DATA)};
+
+const CSS = \`${forTemplateLiteral(scopeCss(model, ".stw-scope", false))}\`;
+
+/** CSS custom properties arrive as a plain record; React wants them as style. */
+function asStyle(vars: Record<string, string>): React.CSSProperties {
+  return vars as React.CSSProperties;
+}
+
+export function AnimatedHeadline() {
+  const scope = React.useRef<HTMLDivElement>(null);
+
+  useGSAP(
+    () => {
+      const scopeEl = scope.current;
+      if (!scopeEl) return;
+
+${scriptSource(model, "scopeEl", true)
+    .split("\n")
+    .map((line) => (line ? `      ${line}` : ""))
+    .join("\n")}
+    },
+    { scope, revertOnUpdate: true },
+  );
+
+  return (
+    <div ref={scope} className="stw-scope">
+      <style>{CSS}</style>
+      <div className="stw-canvas"${model.project.background.animated ? ' data-animated="true"' : ""}>
+${model.theme.grain > 0 ? '        <span className="stw-grain" />\n' : ""}        {LAYERS.map((layer) => (
+          <div
+            key={layer.index}
+            className="stw-layer"
+            data-stw-layer={layer.index}
+            style={asStyle(layer.vars)}
+          >
+            <span
+              className="stw"
+              data-stw-scope=""
+              data-overflow={layer.unmasked ? "visible" : undefined}
+              dir={layer.rtl ? "rtl" : undefined}
+            >
+              <span className="stw-sr">{layer.text}</span>
+              <span className="stw-visual" aria-hidden="true">
+                {layer.lines.map((line, lineIndex) => (
+                  <span className="stw-line" key={lineIndex}>
+                    {line.map((word, wordIndex) => (
+                      <React.Fragment key={word.index}>
+                        <span
+                          className="stw-word"
+                          data-word-index={word.index}
+                          style={asStyle(word.style)}
+                        >
+                          <span className="stw-flash" />
+                          {word.chars.map((character) => (
+                            <span
+                              key={character.i}
+                              className="stw-char"
+                              data-index={character.i}
+                              data-word={character.w}
+                              data-gradient={character.g ? "true" : undefined}
+                            >
+                              <span className="stw-glyph" />
+                              <span className="stw-real">{character.c}</span>
+                            </span>
+                          ))}
+                        </span>
+                        {wordIndex < line.length - 1 ? (
+                          <span className="stw-space"> </span>
+                        ) : null}
+                      </React.Fragment>
+                    ))}
+                  </span>
+                ))}
+                {layer.cursor ? <span className="stw-cursor" /> : null}
+                <span className="stw-underline" />
+                {DEBRIS.map((particle, index) => (
+                  <span
+                    key={index}
+                    className="stw-debris"
+                    data-tone={particle.c}
+                    style={{
+                      left: \`\${particle.l}%\`,
+                      top: \`\${particle.t}%\`,
+                      width: \`\${particle.s}em\`,
+                      height: \`\${particle.s}em\`,
+                    }}
+                  />
+                ))}
+              </span>
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+`;
+}

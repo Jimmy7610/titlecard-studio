@@ -1,0 +1,111 @@
+import { specSource, type EmitContext } from "@/lib/animation/emit";
+import { DEBRIS } from "@/lib/debris";
+import { legacySource } from "@/lib/export/legacy-source";
+import type { ExportModel, LayerModel } from "@/lib/export/model";
+import { masterSource, runtimeEpilogue, runtimePrelude, RUNTIME_HEADER } from "@/lib/export/runtime";
+
+/** The emit context a layer's spec is printed against. */
+function emitContext(
+  model: ExportModel,
+  layer: LayerModel,
+  typed: boolean,
+): EmitContext {
+  return {
+    typed,
+    units: layer.units,
+    wordCount: layer.split.words.length,
+    wordDelays: layer.wordDelays,
+    speed: model.project.motion.speed,
+    stagger: model.project.motion.stagger,
+    easeOverride: model.easeOverride,
+    hasUnderline: true,
+    hasCursor: layer.template.showCursor,
+    debrisCount: DEBRIS.length,
+  };
+}
+
+/**
+ * The timeline body for one layer.
+ *
+ * The six original templates have hand-written source; everything else is
+ * printed from its `MotionSpec` by the same resolver the preview runs, so an
+ * exported file quotes the numbers the user is actually watching.
+ */
+export function layerTimelineSource(
+  model: ExportModel,
+  layer: LayerModel,
+  typed = false,
+): string {
+  const legacy = legacySource(layer.template.id, model.easeOverride);
+  if (legacy) return legacy;
+  if (layer.template.spec) {
+    return specSource(layer.template.spec, emitContext(model, layer, typed));
+  }
+  return "// This template has no timeline body.";
+}
+
+const indent = (source: string, pad: string) =>
+  source
+    .split("\n")
+    .map((line) => (line ? `${pad}${line}` : ""))
+    .join("\n");
+
+/**
+ * The whole script: eases, one builder function per layer, the master timeline
+ * and the epilogue.
+ *
+ * Each layer gets a function rather than a flat block so the preludes cannot
+ * collide — two layers both declaring `const chars` at the same scope would not
+ * even parse.
+ */
+export function scriptSource(
+  model: ExportModel,
+  containerExpression: string,
+  typed = false,
+): string {
+  const rootParam = typed ? "root: HTMLElement" : "root";
+
+  const builders = model.layers.map((layer) => {
+    const template = layer.template;
+    return `// Layer ${layer.index} — ${template.name} · ${template.tagline}
+function buildLayer${layer.index}(${rootParam}) {
+${indent(runtimePrelude(model, layer, typed), "  ")}
+
+${indent(layerTimelineSource(model, layer, typed), "  ")}
+
+  return tl;
+}`;
+  });
+
+  // The React target compiles inside a strict TypeScript project, so the
+  // layer lookup has to be typed and asserted; the plain-script target must
+  // not carry annotations at all.
+  const lookup = typed
+    ? "(selector: string) => container.querySelector<HTMLElement>(selector)!"
+    : "container.querySelector.bind(container)";
+
+  return `${RUNTIME_HEADER}
+
+const container = ${containerExpression};
+
+${builders.join("\n\n")}
+
+${masterSource(model, lookup, typed)}
+${runtimeEpilogue(model, typed)}`;
+}
+
+/** The GSAP code on its own, for the clipboard. */
+export function timelineSource(model: ExportModel): string {
+  const names = model.layers.map((layer) => layer.template.name).join(" · ");
+
+  return `// ${names || "Semantic Text Animator"}
+// Expects the split markup this generator produces.
+// Requires: gsap, gsap/CustomEase.
+//
+//   import { gsap } from "gsap";
+//   import { CustomEase } from "gsap/CustomEase";
+//   gsap.registerPlugin(CustomEase);
+
+${scriptSource(model, "document")}
+`;
+}
