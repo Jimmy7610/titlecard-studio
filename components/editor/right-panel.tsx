@@ -182,8 +182,8 @@ export function RightPanel({ controller }: { controller: ProjectController }) {
                 <InfoNote>
                   Select a word above to give it its own colour, weight, size, glow or
                   entrance delay. Everything else in the phrase keeps the project style.
-                  Styling is held by word position, so rewriting the phrase moves it —
-                  it is kept rather than dropped when a phrase gets shorter.
+                  Styling follows the word when you edit the phrase; a word you delete or
+                  retype loses it rather than passing it to a neighbour.
                 </InfoNote>
               ) : (
                 <div className="space-y-4 rounded-xl border border-border bg-card/40 p-3">

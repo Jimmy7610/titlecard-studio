@@ -26,9 +26,9 @@ const geistMono = Geist_Mono({
  * derived from the real font's metrics.
  */
 export const metadata: Metadata = {
-  title: "Motion Typography Studio",
+  title: "Titlecard — Motion Typography Studio",
   description:
-    "A motion typography studio — bounded, mask-based text animation with GSAP, canvas formats, presets, and HTML, React, GSAP, video and PNG export.",
+    "Titlecard is a motion typography studio: bounded, mask-based text animation with GSAP, canvas formats, looks, and HTML, React, GSAP, video and PNG export.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

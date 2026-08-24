@@ -26,12 +26,14 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { buildExportModel, downloadFile, generate, type CodeExportKind } from "@/lib/export";
 import {
+  ExportCancelled,
   MAX_DURATION,
   MAX_FRAMES,
   VIDEO_PRESETS,
   VideoExportError,
   recordVideo,
   renderFrames,
+  sequenceBudget,
   supportedVideoFormats,
   type VideoFormat,
 } from "@/lib/video/export";
@@ -57,7 +59,7 @@ const CODE_EXPORTS: readonly {
     kind: "html",
     icon: CodeIcon,
     title: "Standalone page",
-    note: ".html · opens with a double-click, GSAP from CDN, fonts and CSS included",
+    note: ".html · one file, opens with a double-click — loads GSAP and web fonts from the network",
   },
   {
     kind: "react",
@@ -142,6 +144,57 @@ function ExportPanel({
   const [busy, setBusy] = React.useState<null | { label: string; done: number; total: number }>(
     null,
   );
+  /**
+   * The handle that stops a running raster export.
+   *
+   * A render can be several minutes of frames, and the only previous way out
+   * was closing the tab: the button disabled itself and there was nothing else
+   * to press.
+   */
+  const abort = React.useRef<AbortController | null>(null);
+
+  const cancelExport = () => abort.current?.abort();
+
+  // Leaving with a render in flight has to stop it too, or the recorder keeps
+  // driving the timeline behind a closed dialog.
+  React.useEffect(() => () => abort.current?.abort(), []);
+
+  /** Shared plumbing for the two raster exports. */
+  const runRaster = async (
+    label: string,
+    run: (options: {
+      onProgress: (done: number, total: number) => void;
+      signal: AbortSignal;
+    }) => Promise<{ blob: Blob; filename: string; frames?: number }>,
+    describe: (result: { blob: Blob; filename: string; frames?: number }) => string,
+  ) => {
+    const controller = new AbortController();
+    abort.current = controller;
+    setBusy({ label, done: 0, total: 1 });
+
+    try {
+      const result = await run({
+        onProgress: (done, total) => setBusy({ label, done, total }),
+        signal: controller.signal,
+      });
+      downloadFile(result.filename, result.blob);
+      toast.success(`${label} finished`, { description: describe(result) });
+    } catch (error) {
+      if (error instanceof ExportCancelled) {
+        toast("Export cancelled", { description: "Nothing was downloaded." });
+      } else {
+        toast.error(`${label} failed`, {
+          description:
+            error instanceof VideoExportError
+              ? error.message
+              : "The browser stopped the export.",
+        });
+      }
+    } finally {
+      abort.current = null;
+      setBusy(null);
+    }
+  };
 
   const format = formats.find((entry) => entry.id === formatId) ?? formats[0] ?? null;
   const transparentProject = model.theme.transparent;
@@ -181,26 +234,12 @@ function ExportPanel({
       return;
     }
 
-    setBusy({ label: "Recording", done: 0, total: 1 });
-    try {
-      const result = await recordVideo(
-        { canvasEl, timeline, project, theme: model.theme },
-        config,
-        format,
-        (done, total) => setBusy({ label: "Recording", done, total }),
-      );
-      downloadFile(result.filename, result.blob);
-      toast.success("Video exported", {
-        description: `${result.filename} · ${(result.blob.size / 1024 / 1024).toFixed(1)} MB`,
-      });
-    } catch (error) {
-      toast.error("Video export failed", {
-        description:
-          error instanceof VideoExportError ? error.message : "The browser stopped the recording.",
-      });
-    } finally {
-      setBusy(null);
-    }
+    await runRaster(
+      "Recording",
+      (options) =>
+        recordVideo({ canvasEl, timeline, project, theme: model.theme }, config, format, options),
+      (result) => `${result.filename} · ${(result.blob.size / 1024 / 1024).toFixed(1)} MB`,
+    );
   };
 
   const runFrames = async () => {
@@ -212,26 +251,16 @@ function ExportPanel({
       return;
     }
 
-    setBusy({ label: "Rendering frames", done: 0, total: 1 });
-    try {
-      const result = await renderFrames(
-        { canvasEl, timeline, project, theme: model.theme },
-        config,
-        (done, total) => setBusy({ label: "Rendering frames", done, total }),
-      );
-      downloadFile(result.filename, result.blob);
-      toast.success(`${result.frames} frames exported`, { description: result.filename });
-    } catch (error) {
-      toast.error("Frame export failed", {
-        description:
-          error instanceof VideoExportError ? error.message : "The browser could not encode a PNG.",
-      });
-    } finally {
-      setBusy(null);
-    }
+    await runRaster(
+      "Rendering frames",
+      (options) =>
+        renderFrames({ canvasEl, timeline, project, theme: model.theme }, config, options),
+      (result) => `${result.frames} frames · ${result.filename}`,
+    );
   };
 
   const frameCount = Math.min(MAX_FRAMES, Math.round(config.duration * config.fps));
+  const budget = sequenceBudget(config);
 
   return (
     <Tabs defaultValue="web">
@@ -280,19 +309,24 @@ function ExportPanel({
                 <InfoNote>{model.warnings[0]}</InfoNote>
               ) : null}
 
-              {model.fonts.some((font) => font.custom) ? (
-                <InfoNote>
-                  Your uploaded face is embedded in the standalone page and in the React
-                  component as a <code className="font-mono">@font-face</code> data URL, so
-                  neither file depends on this editor.
-                </InfoNote>
-              ) : (
-                <InfoNote>
-                  The standalone page links the Google Fonts stylesheet it needs. The React
-                  component documents it in a header comment instead of injecting a link into
-                  your app.
-                </InfoNote>
-              )}
+              <InfoNote>
+                <strong className="font-medium text-foreground">One file, not offline.</strong>{" "}
+                The standalone page inlines its markup, CSS and timeline, and fetches two
+                things when it opens: GSAP from a CDN, and{" "}
+                {model.fonts.some((font) => font.custom === null)
+                  ? "the Google Fonts stylesheet for its typeface"
+                  : "nothing else"}
+                . The generated file lists both at the top, so it can be made fully offline by
+                downloading them and repointing the tags.
+                {model.fonts.some((font) => font.custom) ? (
+                  <>
+                    {" "}
+                    Your uploaded faces are embedded as{" "}
+                    <code className="font-mono">@font-face</code> data URLs and need no
+                    network.
+                  </>
+                ) : null}
+              </InfoNote>
             </TabsContent>
 
             {/* ---------------------------------------------------- Video */}
@@ -395,21 +429,28 @@ function ExportPanel({
                     />
                   ) : null}
 
-                  <Button
-                    type="button"
-                    className="w-full"
-                    disabled={busy !== null}
-                    onClick={() => void runVideo()}
-                  >
+                  <div className="flex gap-1.5">
+                    <Button
+                      type="button"
+                      className="flex-1"
+                      disabled={busy !== null}
+                      onClick={() => void runVideo()}
+                    >
+                      {busy ? (
+                        <LoaderCircleIcon data-icon="inline-start" className="animate-spin" />
+                      ) : (
+                        <FilmIcon data-icon="inline-start" />
+                      )}
+                      {busy
+                        ? `${busy.label} ${Math.round((busy.done / Math.max(1, busy.total)) * 100)}%`
+                        : `Record ${frameCount} frames`}
+                    </Button>
                     {busy ? (
-                      <LoaderCircleIcon data-icon="inline-start" className="animate-spin" />
-                    ) : (
-                      <FilmIcon data-icon="inline-start" />
-                    )}
-                    {busy
-                      ? `${busy.label} ${Math.round((busy.done / Math.max(1, busy.total)) * 100)}%`
-                      : `Record ${frameCount} frames`}
-                  </Button>
+                      <Button type="button" variant="outline" onClick={cancelExport}>
+                        Cancel
+                      </Button>
+                    ) : null}
+                  </div>
 
                   <InfoNote>
                     Frames are rasterised from the running timeline, not screen-captured, so
@@ -462,26 +503,45 @@ function ExportPanel({
                 />
               </div>
 
-              <Button
-                type="button"
-                className="w-full"
-                disabled={busy !== null}
-                onClick={() => void runFrames()}
-              >
+              {budget.message ? (
+                <InfoNote>
+                  <strong className="font-medium text-destructive">Too large.</strong>{" "}
+                  {budget.message}
+                </InfoNote>
+              ) : null}
+
+              <div className="flex gap-1.5">
+                <Button
+                  type="button"
+                  className="flex-1"
+                  disabled={busy !== null || !budget.withinBudget}
+                  onClick={() => void runFrames()}
+                >
+                  {busy ? (
+                    <LoaderCircleIcon data-icon="inline-start" className="animate-spin" />
+                  ) : (
+                    <ImagesIcon data-icon="inline-start" />
+                  )}
+                  {busy
+                    ? `${busy.label} ${busy.done} / ${busy.total}`
+                    : `Export ${frameCount} PNGs as a zip`}
+                </Button>
                 {busy ? (
-                  <LoaderCircleIcon data-icon="inline-start" className="animate-spin" />
-                ) : (
-                  <ImagesIcon data-icon="inline-start" />
-                )}
-                {busy
-                  ? `${busy.label} ${busy.done} / ${busy.total}`
-                  : `Export ${frameCount} PNGs as a zip`}
-              </Button>
+                  <Button type="button" variant="outline" onClick={cancelExport}>
+                    Cancel
+                  </Button>
+                ) : null}
+              </div>
 
               <InfoNote>
                 PNG keeps the alpha channel, so a transparent project comes out ready to key
-                over footage. Frames are capped at {MAX_FRAMES} so a long clip cannot take the
-                tab down with it.
+                over footage. Frames are capped at {MAX_FRAMES}, and the sequence is refused
+                before it starts if it would pass roughly{" "}
+                <span className="tabular">
+                  {(budget.estimatedBytes / 1024 / 1024).toFixed(0)} MB
+                </span>{" "}
+                — a frame cap alone bounds nothing, since 900 frames of 4K is not 900 frames
+                of 360p.
               </InfoNote>
             </TabsContent>
     </Tabs>

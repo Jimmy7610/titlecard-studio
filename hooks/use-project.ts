@@ -3,8 +3,9 @@
 import * as React from "react";
 
 import { useClientValue } from "@/hooks/use-client-value";
-import { activeLayer, DEFAULT_PROJECT } from "@/lib/project";
+import { activeLayer, DEFAULT_PROJECT, layerTypography } from "@/lib/project";
 import { clearSession, loadSession, saveSession } from "@/lib/storage";
+import { remapWordStyles } from "@/lib/word-styles";
 import type { ProjectState, TextLayer } from "@/lib/types";
 
 /**
@@ -72,6 +73,40 @@ type History = {
 /** The server has no storage, so it always answers with the blank project. */
 const SERVER_SESSION = { project: DEFAULT_PROJECT, restored: false, migrated: false };
 
+/**
+ * Carries per-word styling across a text edit.
+ *
+ * Applied here rather than in the text field because *every* route that can
+ * change a phrase has to go through it — the panel, the phrase presets, the
+ * "use its text too" offer after an import. A rule enforced at one call site is
+ * a rule with as many holes as there are other call sites.
+ *
+ * Undo and redo restore whole snapshots and deliberately do not come through
+ * here: their styling is already correct for the text they carry.
+ */
+function reconcileWordStyles(previous: ProjectState, next: ProjectState): ProjectState {
+  if (previous === next || previous.layers === next.layers) return next;
+
+  let changed = false;
+  const layers = next.layers.map((layer) => {
+    const before = previous.layers.find((entry) => entry.id === layer.id);
+    if (!before || before.text === layer.text) return layer;
+    if (Object.keys(layer.wordStyles).length === 0) return layer;
+
+    const typography = layerTypography(next, layer);
+    const { wordStyles } = remapWordStyles(before.text, layer.text, layer.wordStyles, {
+      granularity: typography.granularity,
+      transform: typography.transform,
+      gradientDigits: next.gradientDigits,
+    });
+
+    changed = true;
+    return { ...layer, wordStyles };
+  });
+
+  return changed ? { ...next, layers } : next;
+}
+
 const initial = (project: ProjectState): History => ({
   present: project,
   past: [],
@@ -104,8 +139,9 @@ export function useProject(): ProjectController {
     const now = Date.now();
 
     commit((previous) => {
-      const next =
+      const patched =
         typeof patch === "function" ? patch(previous.present) : { ...previous.present, ...patch };
+      const next = reconcileWordStyles(previous.present, patched);
       if (next === previous.present) return previous;
 
       if (options.silent) return { ...previous, present: next };

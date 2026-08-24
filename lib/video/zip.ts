@@ -6,6 +6,13 @@
  * would be a dependency carried by everyone to serve one panel, and it would
  * buy nothing: PNG is already deflated, so storing the bytes verbatim costs
  * about 0.1% over deflating them again.
+ *
+ * Entries are added one at a time and kept as `Blob`s, never as buffers. That
+ * is the whole memory story: a Blob lives in the browser's blob store, which
+ * spills to disk, while a `Uint8Array` is JS heap that cannot. Collecting nine
+ * hundred 1080p frames as byte arrays before building the archive — which is
+ * what this used to do — is a couple of gigabytes of heap and a dead tab. The
+ * CRC is computed by streaming each blob once, so peak heap is one chunk.
  */
 
 const CRC_TABLE = (() => {
@@ -18,76 +25,117 @@ const CRC_TABLE = (() => {
   return table;
 })();
 
-function crc32(bytes: Uint8Array<ArrayBuffer>): number {
-  let crc = 0xffffffff;
+function crc32Update(crc: number, bytes: Uint8Array): number {
+  let next = crc;
   for (let i = 0; i < bytes.length; i += 1) {
-    crc = CRC_TABLE[(crc ^ bytes[i]) & 0xff] ^ (crc >>> 8);
+    next = CRC_TABLE[(next ^ bytes[i]) & 0xff] ^ (next >>> 8);
   }
-  return (crc ^ 0xffffffff) >>> 0;
+  return next;
 }
 
-export type ZipEntry = { name: string; bytes: Uint8Array<ArrayBuffer> };
+/** Streams a blob once to checksum it, holding one chunk at a time. */
+async function crc32OfBlob(blob: Blob): Promise<number> {
+  let crc = 0xffffffff;
+
+  if (typeof blob.stream === "function") {
+    const reader = blob.stream().getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      crc = crc32Update(crc, value);
+    }
+  } else {
+    // Older engines without Blob.stream still have to produce a valid archive.
+    crc = crc32Update(crc, new Uint8Array(await blob.arrayBuffer()));
+  }
+
+  return (crc ^ 0xffffffff) >>> 0;
+}
 
 /** DOS time/date. Anything in range works; a fixed stamp keeps output stable. */
 const DOS_TIME = 0;
 const DOS_DATE = 0x2821; // 2020-01-01
 
-export function createZip(entries: readonly ZipEntry[]): Blob {
-  const encoder = new TextEncoder();
-  const chunks: BlobPart[] = [];
-  const central: Uint8Array<ArrayBuffer>[] = [];
-  let offset = 0;
+type Record = { name: Uint8Array<ArrayBuffer>; crc: number; size: number; offset: number };
 
-  for (const entry of entries) {
-    const name = encoder.encode(entry.name) as Uint8Array<ArrayBuffer>;
-    const crc = crc32(entry.bytes);
-    const size = entry.bytes.length;
+/**
+ * Builds an archive incrementally.
+ *
+ * Nothing is concatenated until `finish()`, and the parts handed to the final
+ * `Blob` are themselves blobs, so the bytes never have to exist in the heap all
+ * at once.
+ */
+export class ZipBuilder {
+  private readonly encoder = new TextEncoder();
+  private readonly parts: BlobPart[] = [];
+  private readonly records: Record[] = [];
+  private offset = 0;
 
-    const local = new Uint8Array(30 + name.length);
-    const localView = new DataView(local.buffer);
-    localView.setUint32(0, 0x04034b50, true); // local file header
-    localView.setUint16(4, 20, true); // version needed
-    localView.setUint16(6, 0, true); // flags
-    localView.setUint16(8, 0, true); // stored
-    localView.setUint16(10, DOS_TIME, true);
-    localView.setUint16(12, DOS_DATE, true);
-    localView.setUint32(14, crc, true);
-    localView.setUint32(18, size, true);
-    localView.setUint32(22, size, true);
-    localView.setUint16(26, name.length, true);
-    localView.setUint16(28, 0, true);
-    local.set(name, 30);
-
-    chunks.push(local, entry.bytes);
-
-    const record = new Uint8Array(46 + name.length);
-    const recordView = new DataView(record.buffer);
-    recordView.setUint32(0, 0x02014b50, true); // central directory header
-    recordView.setUint16(4, 20, true);
-    recordView.setUint16(6, 20, true);
-    recordView.setUint16(8, 0, true);
-    recordView.setUint16(10, 0, true);
-    recordView.setUint16(12, DOS_TIME, true);
-    recordView.setUint16(14, DOS_DATE, true);
-    recordView.setUint32(16, crc, true);
-    recordView.setUint32(20, size, true);
-    recordView.setUint32(24, size, true);
-    recordView.setUint16(28, name.length, true);
-    recordView.setUint32(42, offset, true);
-    record.set(name, 46);
-    central.push(record);
-
-    offset += local.length + size;
+  /** Bytes written so far, headers included. */
+  get bytes(): number {
+    return this.offset;
   }
 
-  const centralSize = central.reduce((total, record) => total + record.length, 0);
-  const end = new Uint8Array(22);
-  const endView = new DataView(end.buffer);
-  endView.setUint32(0, 0x06054b50, true); // end of central directory
-  endView.setUint16(8, entries.length, true);
-  endView.setUint16(10, entries.length, true);
-  endView.setUint32(12, centralSize, true);
-  endView.setUint32(16, offset, true);
+  get count(): number {
+    return this.records.length;
+  }
 
-  return new Blob([...chunks, ...central, end], { type: "application/zip" });
+  async add(name: string, blob: Blob): Promise<void> {
+    const encoded = this.encoder.encode(name) as Uint8Array<ArrayBuffer>;
+    const crc = await crc32OfBlob(blob);
+    const size = blob.size;
+
+    const local = new Uint8Array(30 + encoded.length);
+    const view = new DataView(local.buffer);
+    view.setUint32(0, 0x04034b50, true); // local file header
+    view.setUint16(4, 20, true); // version needed
+    view.setUint16(6, 0, true); // flags
+    view.setUint16(8, 0, true); // stored
+    view.setUint16(10, DOS_TIME, true);
+    view.setUint16(12, DOS_DATE, true);
+    view.setUint32(14, crc, true);
+    view.setUint32(18, size, true);
+    view.setUint32(22, size, true);
+    view.setUint16(26, encoded.length, true);
+    view.setUint16(28, 0, true);
+    local.set(encoded, 30);
+
+    this.parts.push(local, blob);
+    this.records.push({ name: encoded, crc, size, offset: this.offset });
+    this.offset += local.length + size;
+  }
+
+  finish(): Blob {
+    const central: Uint8Array<ArrayBuffer>[] = [];
+
+    for (const entry of this.records) {
+      const record = new Uint8Array(46 + entry.name.length);
+      const view = new DataView(record.buffer);
+      view.setUint32(0, 0x02014b50, true); // central directory header
+      view.setUint16(4, 20, true);
+      view.setUint16(6, 20, true);
+      view.setUint16(8, 0, true);
+      view.setUint16(10, 0, true);
+      view.setUint16(12, DOS_TIME, true);
+      view.setUint16(14, DOS_DATE, true);
+      view.setUint32(16, entry.crc, true);
+      view.setUint32(20, entry.size, true);
+      view.setUint32(24, entry.size, true);
+      view.setUint16(28, entry.name.length, true);
+      view.setUint32(42, entry.offset, true);
+      record.set(entry.name, 46);
+      central.push(record);
+    }
+
+    const centralSize = central.reduce((total, record) => total + record.length, 0);
+    const end = new Uint8Array(22);
+    const view = new DataView(end.buffer);
+    view.setUint32(0, 0x06054b50, true); // end of central directory
+    view.setUint16(8, this.records.length, true);
+    view.setUint16(10, this.records.length, true);
+    view.setUint32(12, centralSize, true);
+    view.setUint32(16, this.offset, true);
+
+    return new Blob([...this.parts, ...central, end], { type: "application/zip" });
+  }
 }

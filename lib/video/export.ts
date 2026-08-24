@@ -2,7 +2,7 @@
 
 import { captureLayout } from "@/lib/video/layout";
 import { paintFrame } from "@/lib/video/paint";
-import { createZip, type ZipEntry } from "@/lib/video/zip";
+import { ZipBuilder } from "@/lib/video/zip";
 import { slugify } from "@/lib/project";
 import type { ResolvedTheme } from "@/lib/theme";
 import type { ProjectState, VideoExportConfig } from "@/lib/types";
@@ -20,9 +20,69 @@ import type { gsap } from "@/lib/gsap";
 
 export class VideoExportError extends Error {}
 
+/** Thrown when the user stops an export. Not a failure; not reported as one. */
+export class ExportCancelled extends Error {
+  constructor() {
+    super("Export cancelled");
+    this.name = "ExportCancelled";
+  }
+}
+
 /** Beyond this the tab starts fighting for memory rather than encoding. */
 export const MAX_FRAMES = 900;
 export const MAX_DURATION = 30;
+
+/**
+ * The size a PNG sequence may reach before it is refused.
+ *
+ * A frame cap alone does not bound anything: 900 frames of 320x180 is a
+ * rounding error and 900 frames of 4K is not. The archive streams to a Blob so
+ * this is disk rather than heap, but a browser download of several gigabytes is
+ * a promise the tab usually cannot keep, so the job is refused before it starts
+ * rather than after it has eaten the session.
+ */
+export const MAX_SEQUENCE_BYTES = 700 * 1024 * 1024;
+
+/**
+ * A conservative guess at one rendered frame.
+ *
+ * Titlecard frames are flat colour and type, which PNG compresses hard — a
+ * 1080p frame is typically well under 200 KB. A quarter byte per pixel is
+ * several times that, which is the right direction to be wrong in for a
+ * pre-flight check.
+ */
+export function estimateFrameBytes(width: number, height: number): number {
+  return Math.round(width * height * 0.25) + 2048;
+}
+
+export type SequenceBudget = {
+  frames: number;
+  estimatedBytes: number;
+  withinBudget: boolean;
+  /** Populated when the job should not be started. */
+  message: string | null;
+};
+
+/** What a PNG sequence would cost, for the panel to show before it starts. */
+export function sequenceBudget(config: VideoExportConfig): SequenceBudget {
+  const frames = Math.min(MAX_FRAMES, Math.max(1, Math.round(config.duration * config.fps)));
+  const estimatedBytes = frames * estimateFrameBytes(config.width, config.height);
+  const withinBudget = estimatedBytes <= MAX_SEQUENCE_BYTES;
+
+  return {
+    frames,
+    estimatedBytes,
+    withinBudget,
+    message: withinBudget
+      ? null
+      : `${frames} frames at ${config.width}x${config.height} is roughly ${(estimatedBytes / 1024 / 1024 / 1024).toFixed(1)} GB, over the ${Math.round(MAX_SEQUENCE_BYTES / 1024 / 1024)} MB this browser can be relied on to deliver. Use fewer frames, a smaller size, or a video format.`,
+  };
+}
+
+/** Rejects at the next frame boundary once the signal aborts. */
+function throwIfCancelled(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw new ExportCancelled();
+}
 
 export type VideoFormat = {
   id: string;
@@ -69,6 +129,12 @@ export type RenderTarget = {
 };
 
 export type Progress = (done: number, total: number) => void;
+
+export type ExportOptions = {
+  onProgress?: Progress;
+  /** Aborting stops at the next frame and restores the editor. */
+  signal?: AbortSignal;
+};
 
 type FrameJob = {
   canvas: HTMLCanvasElement;
@@ -139,6 +205,10 @@ async function prepare(
     restore: () => {
       timeline.seek(startedAt, false);
       if (!wasPaused) timeline.play();
+      // The scratch canvas is the largest single allocation an export makes.
+      // Zeroing it lets the backing store go before the next one is created.
+      canvas.width = 0;
+      canvas.height = 0;
     },
   };
 }
@@ -151,11 +221,13 @@ export async function recordVideo(
   target: RenderTarget,
   config: VideoExportConfig,
   format: VideoFormat,
-  onProgress?: Progress,
+  options: ExportOptions = {},
 ): Promise<{ blob: Blob; filename: string }> {
   if (typeof MediaRecorder === "undefined") {
     throw new VideoExportError("This browser has no MediaRecorder — video export is unavailable.");
   }
+  const { onProgress, signal } = options;
+  throwIfCancelled(signal);
 
   const alpha = config.transparent && format.alpha && target.theme.transparent;
   const job = await prepare(target, config, alpha);
@@ -180,12 +252,15 @@ export async function recordVideo(
     recorder.onerror = () => reject(new VideoExportError("The recorder stopped unexpectedly."));
   });
 
+  let cancelled = false;
+
   try {
     recorder.start();
     const passes = Math.max(1, config.loops);
 
     for (let pass = 0; pass < passes; pass += 1) {
       for (let frame = 0; frame < job.frames; frame += 1) {
+        throwIfCancelled(signal);
         job.render(frame);
         track.requestFrame();
         onProgress?.(pass * job.frames + frame + 1, job.frames * passes);
@@ -196,9 +271,24 @@ export async function recordVideo(
 
     recorder.stop();
     await finished;
+  } catch (error) {
+    cancelled = error instanceof ExportCancelled;
+    throw error;
   } finally {
+    // Every exit path stops the recorder and the track. A running MediaRecorder
+    // holds the canvas alive and keeps writing, so leaving one behind on the
+    // cancel path is a leak that survives the dialog closing.
+    if (recorder.state !== "inactive") {
+      try {
+        recorder.stop();
+      } catch {
+        /* already stopping */
+      }
+    }
+    for (const streamTrack of stream.getTracks()) streamTrack.stop();
     job.restore();
-    track.stop();
+    // A cancelled run has partial chunks that would decode as a broken file.
+    if (cancelled) chunks.length = 0;
   }
 
   const blob = new Blob(chunks, { type: format.mimeType.split(";")[0] });
@@ -215,15 +305,22 @@ export async function recordVideo(
 export async function renderFrames(
   target: RenderTarget,
   config: VideoExportConfig,
-  onProgress?: Progress,
+  options: ExportOptions = {},
 ): Promise<{ blob: Blob; filename: string; frames: number }> {
+  const { onProgress, signal } = options;
+  throwIfCancelled(signal);
+
+  const budget = sequenceBudget(config);
+  if (!budget.withinBudget) throw new VideoExportError(budget.message!);
+
   const alpha = config.transparent && target.theme.transparent;
   const job = await prepare(target, config, alpha);
-  const entries: ZipEntry[] = [];
+  const archive = new ZipBuilder();
   const stem = slugify(target.project.layers[0]?.text || target.project.name);
 
   try {
     for (let frame = 0; frame < job.frames; frame += 1) {
+      throwIfCancelled(signal);
       job.render(frame);
 
       const blob = await new Promise<Blob | null>((resolve) =>
@@ -231,10 +328,17 @@ export async function renderFrames(
       );
       if (!blob) throw new VideoExportError("This browser could not encode a PNG.");
 
-      entries.push({
-        name: `${stem}/${stem}-${String(frame).padStart(4, "0")}.png`,
-        bytes: new Uint8Array(await blob.arrayBuffer()),
-      });
+      // The blob goes into the archive as a blob. Reading it into a byte array
+      // here is what used to put every frame of the sequence on the JS heap.
+      await archive.add(`${stem}/${stem}-${String(frame).padStart(4, "0")}.png`, blob);
+
+      // Compressed reality can run ahead of the estimate; stop before the tab
+      // does rather than after.
+      if (archive.bytes > MAX_SEQUENCE_BYTES) {
+        throw new VideoExportError(
+          `The sequence passed ${Math.round(MAX_SEQUENCE_BYTES / 1024 / 1024)} MB at frame ${frame + 1}. Use fewer frames, a smaller size, or a video format.`,
+        );
+      }
 
       onProgress?.(frame + 1, job.frames);
       await nextFrame();
@@ -243,7 +347,7 @@ export async function renderFrames(
     job.restore();
   }
 
-  return { blob: createZip(entries), filename: `${stem}-frames.zip`, frames: entries.length };
+  return { blob: archive.finish(), filename: `${stem}-frames.zip`, frames: archive.count };
 }
 
 /** Sensible video presets, kept away from sizes that lock up a tab. */

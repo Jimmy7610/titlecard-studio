@@ -268,10 +268,10 @@ export function Editor() {
             style={{ backgroundImage: gradientOf(getPalette(project.paletteId)) }}
             aria-hidden="true"
           >
-            ST
+            TC
           </span>
           <div className="leading-none">
-            <p className="text-xs font-semibold">Motion Typography Studio</p>
+            <p className="text-xs font-semibold">Titlecard</p>
             <p className="mt-0.5 hidden text-[0.65rem] text-muted-foreground sm:block">
               {template.name} · {duration.toFixed(2)}s
             </p>
