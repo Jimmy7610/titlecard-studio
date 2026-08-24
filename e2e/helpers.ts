@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { expect, type Locator, type Page } from "@playwright/test";
 
 /**
@@ -15,8 +15,9 @@ export const LEGACY_SESSION_KEY = "stw:session:v2";
 export const PRESETS_KEY = "stw:presets:v3";
 export const ONBOARDING_KEY = "stw:onboarding-dismissed:v1";
 
-const fontFile = (name: string) =>
-  readFileSync(fileURLToPath(new URL(`./fixtures/fonts/${name}`, import.meta.url)));
+// Resolved from the repository root rather than `import.meta.url`: Playwright
+// transpiles these files to CommonJS, where that is not available.
+const fontFile = (name: string) => readFileSync(join(process.cwd(), "e2e/fixtures/fonts", name));
 
 /**
  * Serves one vendored face for every family the app asks Google Fonts for.

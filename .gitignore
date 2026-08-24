@@ -43,3 +43,9 @@ next-env.d.ts
 # generated export samples and codegen type-check scratch
 /public/__samples/
 /.react-check/
+
+# playwright
+/playwright-report/
+/test-results/
+/blob-report/
+/.playwright/

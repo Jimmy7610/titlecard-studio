@@ -50,7 +50,16 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"], channel: undefined },
+      use: {
+        ...devices["Desktop Chrome"],
+        channel: undefined,
+        // After the device spread, not before: `devices` carries its own
+        // viewport, and a project-level `use` wins over the top-level one. A
+        // silently different width changes which columns the editor shows and
+        // resizes every `cqw`-derived glyph in the screenshots.
+        viewport: { width: 1440, height: 900 },
+        deviceScaleFactor: 1,
+      },
     },
   ],
   webServer: {

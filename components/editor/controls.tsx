@@ -115,10 +115,15 @@ export function ToggleRow({
   checked: boolean;
   onCheckedChange: (next: boolean) => void;
 }) {
+  // The switch renders a hidden checkbox that takes the `id`, so a `for=` label
+  // names *that* rather than the button the user actually focuses and presses.
+  // Pointing the button at the label element is what gives it a name at all.
+  const labelId = `${id}-label`;
+
   return (
     <div className="flex items-start justify-between gap-4">
       <div className="space-y-0.5">
-        <Label htmlFor={id} className="text-xs font-medium">
+        <Label id={labelId} htmlFor={id} className="text-xs font-medium">
           {label}
         </Label>
         {hint ? (
@@ -127,6 +132,7 @@ export function ToggleRow({
       </div>
       <Switch
         id={id}
+        aria-labelledby={labelId}
         checked={checked}
         onCheckedChange={(next) => onCheckedChange(next)}
         className="mt-0.5 shrink-0"

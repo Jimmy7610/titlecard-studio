@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+# A new push to the same branch supersedes the run in flight.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Turbopack and Playwright both behave differently under CI.
+  CI: "true"
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  # Lint, unit tests, codegen checks and the production build. One job because
+  # they share an install and a build cache, and splitting them would spend more
+  # wall-clock time on `npm ci` than it saves in parallelism.
+  check:
+    name: Lint, tests and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # `npm ci` has to be enough to run every check. Nothing may reach for a
+      # tool at run time — that is what pinning tsx was for.
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test
+
+      - name: Export checks
+        run: npm run check:exports
+
+      - name: Generated React components type-check
+        run: npm run check:react
+
+      - name: Production build
+        run: npm run build
+
+  # The browser suite, including the curated visual baselines.
+  e2e:
+    name: Browser tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # Pinned to the version in package-lock, so the browser and the runner
+      # that drives it cannot drift apart.
+      - name: Resolve Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache browsers
+        id: browser-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      - name: Install Chromium
+        if: steps.browser-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Install system dependencies
+        if: steps.browser-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      - name: Browser tests
+        run: npm run test:e2e
+
+      # Screenshots are per platform, because font rasterisation is not
+      # portable. On a runner with no Linux baselines committed the visual specs
+      # write them and fail; uploading them is what lets a maintainer commit the
+      # first set. See docs/TESTING.md.
+      - name: Upload report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload generated snapshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-snapshots
+          path: e2e/**/*-snapshots/**
+          retention-days: 7
+          if-no-files-found: ignore
