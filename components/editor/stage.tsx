@@ -6,10 +6,10 @@ import { SplitLayer } from "@/components/editor/split-layer";
 import type { CharUnit, WordUnit } from "@/lib/animation/units";
 import { scopeVars, SPLIT_PRIMITIVES_CSS } from "@/lib/export/css";
 import type { ExportModel } from "@/lib/export/model";
-import { loadFont } from "@/lib/fonts";
+import { fontRequestKey, loadFontRequests } from "@/lib/fonts";
 import { getGlyphPool } from "@/lib/glyphs";
 import { gsap, useGSAP } from "@/lib/gsap";
-import { projectFontIds } from "@/lib/project";
+import { projectFontRequests } from "@/lib/project";
 import { buildTemplate } from "@/lib/templates";
 
 /**
@@ -31,6 +31,14 @@ export type StageHandle = {
   setRate: (rate: number) => void;
   timeline: () => gsap.core.Timeline | null;
   isPlaying: () => boolean;
+  /**
+   * Resolves once every face this project renders is measurable and the
+   * timeline built against it exists.
+   *
+   * The export paths and the browser tests both need a point at which "what is
+   * on screen" has stopped moving for reasons other than playback.
+   */
+  settled: () => Promise<void>;
 };
 
 export type StageProps = {
@@ -93,20 +101,30 @@ export function Stage({ model, reduceMotion, onReady, ref }: StageProps) {
   const master = React.useRef<gsap.core.Timeline | null>(null);
   /** The font key whose faces are known to be measurable. */
   const [loadedFonts, setLoadedFonts] = React.useState("");
+  /**
+   * The load for the faces this project currently renders.
+   *
+   * Written by the effect below and awaited by `settled()`. Everything else
+   * about a rebuild is synchronous inside the layout effect, so waiting on this
+   * plus a paint is the whole of "the stage has stopped changing".
+   */
+  const facesReady = React.useRef<Promise<unknown>>(Promise.resolve());
 
   const { project, theme, layers } = model;
 
   // Every mask height is derived from font metrics, so the timeline must not be
-  // built against a fallback face and then measured against the real one.
-  const fontKey = projectFontIds(project).join("|");
-  const weight = project.typography.weight;
+  // built against a fallback face and then measured against the real one. The
+  // requests carry weight and style, because those change the box too.
+  const requests = React.useMemo(() => projectFontRequests(project), [project]);
+  const fontKey = requests.map(fontRequestKey).join("|");
+
   React.useEffect(() => {
     let cancelled = false;
 
     // Resolving asynchronously rather than flipping a flag to false first: the
     // previous face is still the right thing to render until the new one is
     // actually measurable.
-    void Promise.all(fontKey.split("|").map((id) => loadFont(id, weight)))
+    const pending = loadFontRequests(requests)
       .then(async () => {
         if (document.fonts) await document.fonts.ready;
       })
@@ -128,10 +146,16 @@ export function Stage({ model, reduceMotion, onReady, ref }: StageProps) {
         if (!cancelled) setLoadedFonts(fontKey);
       });
 
+    facesReady.current = pending;
+    void pending;
+
     return () => {
       cancelled = true;
     };
-  }, [fontKey, weight]);
+    // `requests` is derived from the project on every render, so the digest is
+    // the dependency; the array itself would rebuild this on every keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fontKey]);
 
   React.useImperativeHandle(
     ref,
@@ -170,6 +194,19 @@ export function Stage({ model, reduceMotion, onReady, ref }: StageProps) {
       isPlaying: () => {
         const timeline = master.current;
         return timeline !== null && !timeline.paused();
+      },
+      /**
+       * Resolves when the faces are measurable and the DOM has been painted
+       * with the timeline built against them.
+       *
+       * Two frames rather than one: the first lets React commit and the layout
+       * effect rebuild, the second lets that build paint.
+       */
+      settled: async () => {
+        await facesReady.current;
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        });
       },
     }),
     [],
@@ -219,7 +256,11 @@ export function Stage({ model, reduceMotion, onReady, ref }: StageProps) {
       if (!root) return;
 
       const roots = gsap.utils.toArray<HTMLElement>("[data-stw-layer]", root);
-      if (!roots.length) return;
+      if (!roots.length) {
+        // No visible layer is a legitimate resting state, not a pending one.
+        onReady?.(0);
+        return;
+      }
 
       const collected = roots.map((layerRoot) => collectUnits(layerRoot));
 

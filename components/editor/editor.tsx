@@ -38,6 +38,7 @@ import { useClientValue } from "@/hooks/use-client-value";
 import { useProject } from "@/hooks/use-project";
 import { buildExportModel } from "@/lib/export";
 import { getPalette, gradientOf } from "@/lib/palettes";
+import { installTestHook } from "@/lib/test-hook";
 import { getTemplate, type TemplateId } from "@/lib/templates";
 import { cn } from "@/lib/utils";
 
@@ -152,6 +153,12 @@ export function Editor() {
   const viewport = React.useRef<HTMLDivElement>(null);
 
   const model = React.useMemo(() => buildExportModel(project), [project]);
+
+  // The browser tests drive the transport through the same handle this bar
+  // does. Re-published whenever the preview remounts, which is what the layer
+  // count changing does.
+  const hasStage = model.layers.length > 0;
+  React.useEffect(() => installTestHook(hasStage ? stage.current : null), [hasStage, model]);
 
   // Bumped whenever the preview is rebuilt, so the transport bar re-attaches
   // its animation frame to the new timeline.

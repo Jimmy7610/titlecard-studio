@@ -106,6 +106,21 @@ export function buildExportModel(project: ProjectState): ExportModel {
         `"${layer.layer.name}" uses a script that cannot be split per character — it animates per word instead.`,
       );
     }
+
+    // An uploaded family only renders the weights that were uploaded. Asking
+    // for one it does not have gets a browser-synthesised approximation, which
+    // the raster exporters cannot reproduce.
+    const { font, typography } = layer;
+    if (font.custom && font.weights.length && !font.weights.includes(typography.weight)) {
+      warnings.push(
+        `"${font.name}" has no ${typography.weight} weight uploaded — the browser is synthesising it. Upload that weight for an exact export.`,
+      );
+    }
+    if (font.custom && typography.italic && !font.italic) {
+      warnings.push(
+        `"${font.name}" has no italic uploaded — the browser is slanting the upright face.`,
+      );
+    }
   }
 
   return {

@@ -354,14 +354,22 @@ export function declarations(vars: Record<string, string>, indent = "  "): strin
     .join("\n");
 }
 
-/** `@font-face` rules for any uploaded face, so an export stands alone. */
+/**
+ * `@font-face` rules for every uploaded face, so an export stands alone.
+ *
+ * One rule per variant with its own descriptors. Emitting a single rule for the
+ * family put every uploaded weight on 400 normal, so an export that used the
+ * Bold upload rendered the Regular and synthesised the difference.
+ */
 export function embeddedFontFaces(model: ExportModel): string {
   return model.fonts
-    .filter((font) => font.custom !== null)
+    .flatMap((font) => font.variants)
     .map(
-      (font) => `@font-face {
-  font-family: "${font.family}";
-  src: url(${font.custom!.dataUrl}) format("${font.custom!.format}");
+      (variant) => `@font-face {
+  font-family: "${variant.family}";
+  font-weight: ${variant.weight};
+  font-style: ${variant.italic ? "italic" : "normal"};
+  src: url(${variant.dataUrl}) format("${variant.format}");
   font-display: swap;
 }`,
     )

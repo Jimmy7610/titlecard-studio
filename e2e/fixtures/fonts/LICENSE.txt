@@ -1,0 +1,19 @@
+Outfit (latin and latin-ext woff2 subsets), vendored for deterministic tests.
+
+Copyright 2020 The Outfit Project Authors (https://github.com/Outfitio/Outfit-Fonts)
+
+Licensed under the SIL Open Font License, Version 1.1.
+The full licence text is at https://openfontlicense.org and is reproduced in the
+upstream project at https://github.com/Outfitio/Outfit-Fonts/blob/main/OFL.txt
+
+WHY THESE FILES ARE IN THE REPOSITORY
+-------------------------------------
+The visual regression suite has to render the same pixels on a laptop and on a
+CI runner. Fetching a face from fonts.googleapis.com at test time makes the
+screenshots depend on the network and on whatever version Google is currently
+serving, and falling back to a system stack makes them depend on which fonts the
+machine happens to have installed. These two subsets are served from the test
+fixture instead, so every visual test renders against one known face.
+
+They are used by the test suite only. The application still loads its faces from
+Google Fonts at runtime; nothing here ships to users.

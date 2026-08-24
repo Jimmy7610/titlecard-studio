@@ -1,4 +1,5 @@
 import { CANVAS_FORMATS } from "@/lib/canvas-formats";
+import { dedupeFontRequests, type FontRequest } from "@/lib/fonts";
 import type {
   BackgroundConfig,
   CanvasConfig,
@@ -214,13 +215,53 @@ export function layerTypography(
   };
 }
 
-/** Every font the project needs loaded, deduplicated. */
-export function projectFontIds(project: ProjectState): string[] {
-  const ids = new Set<string>([project.typography.fontId]);
+/**
+ * Every *face* the project renders, deduplicated.
+ *
+ * Not every font id: a face is a family plus a weight plus a style, and the
+ * timeline measures the box each one produces. Collecting ids alone meant a
+ * layer overriding the weight or switching to italic was measured against
+ * whatever variant the project default had already loaded.
+ *
+ * Layers are read through `layerTypography`, so an override wins over the
+ * project default exactly the way it does when the layer renders.
+ */
+export function projectFontRequests(project: ProjectState): FontRequest[] {
+  const requests: FontRequest[] = [
+    {
+      fontId: project.typography.fontId,
+      weight: project.typography.weight,
+      italic: project.typography.italic,
+    },
+  ];
+
   for (const layer of project.layers) {
-    if (layer.typography.fontId) ids.add(layer.typography.fontId);
+    const typography = layerTypography(project, layer);
+    requests.push({
+      fontId: typography.fontId,
+      weight: typography.weight,
+      italic: typography.italic,
+    });
+
+    // A per-word weight renders in the same line as its neighbours, so it is a
+    // face this project needs too.
+    for (const style of Object.values(layer.wordStyles)) {
+      if (typeof style?.weight === "number") {
+        requests.push({
+          fontId: typography.fontId,
+          weight: style.weight,
+          italic: typography.italic,
+        });
+      }
+    }
   }
-  return [...ids];
+
+  return dedupeFontRequests(requests);
+}
+
+/** Every font family the project needs, deduplicated. */
+export function projectFontIds(project: ProjectState): string[] {
+  return [...new Set(projectFontRequests(project).map((request) => request.fontId))];
 }
 
 /** Slug used for downloaded filenames. */

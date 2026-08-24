@@ -14,6 +14,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join } from "node:path";
 
 import { buildExportModel, reactComponent } from "../lib/export";
@@ -22,6 +23,9 @@ import { TEMPLATES } from "../lib/templates";
 import type { ProjectState, WordStyle } from "../lib/types";
 
 const DIR = ".react-check";
+
+/** The pinned `tsc` entry point, so the check cannot drift with the registry. */
+const TSC = createRequire(import.meta.url).resolve("typescript/bin/tsc");
 
 /**
  * Word styling on every third template: it is the branch that emits baked
@@ -69,7 +73,9 @@ try {
     writeFileSync(join(DIR, `Generated${index}.tsx`), source, "utf8");
   });
 
-  execFileSync("npx", ["tsc", "--noEmit"], { stdio: "pipe", shell: true });
+  // The project's own pinned compiler, resolved from node_modules rather than
+  // whatever `npx` would fetch. `npm ci` has to be enough to run every check.
+  execFileSync(process.execPath, [TSC, "--noEmit"], { stdio: "pipe" });
   console.log(`All ${projects.length} generated React components type-check.`);
 } catch (error) {
   const output = error instanceof Error && "stdout" in error ? String((error as { stdout: Buffer }).stdout) : String(error);
