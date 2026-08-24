@@ -88,14 +88,28 @@ test("the export dialog traps focus and closes on Escape", async ({ page }) => {
 });
 
 test("the timeline slider is operable from the keyboard", async ({ page }) => {
+  // Pause first. The composition plays on load, and a moving playhead would
+  // make the time after a keypress differ from the time before it whether or
+  // not the key did anything.
+  const transport = page.getByRole("button", { name: /^(Play|Pause)$/ });
+  await expect(transport).toHaveAttribute("aria-label", "Pause");
+  await transport.click();
+  await expect(transport).toHaveAttribute("aria-label", "Play");
+
   const track = page.getByRole("slider", { name: "Timeline position" });
   await track.focus();
   await expect(track).toBeFocused();
 
+  // Rewound, so there is somewhere for the key to move to.
+  await page.evaluate(() => window.__titlecard!.seek(0));
+  await expect(track).toHaveAttribute("aria-valuenow", "0");
+
   const before = await page.evaluate(() => window.__titlecard!.timeline()!.time());
   await page.keyboard.press("ArrowRight");
+  await expect(track).not.toHaveAttribute("aria-valuenow", "0");
+
   const after = await page.evaluate(() => window.__titlecard!.timeline()!.time());
-  expect(after).not.toBe(before);
+  expect(after).toBeGreaterThan(before);
 
   await expect(track).toHaveAttribute("aria-valuemin", "0");
   await expect(track).toHaveAttribute("aria-valuemax", "100");

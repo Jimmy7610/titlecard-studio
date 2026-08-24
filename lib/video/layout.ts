@@ -51,6 +51,16 @@ export type LayerLayout = {
   debris: DecorLayout[];
   /** Overflow clipping is the premise of most templates; a few opt out. */
   masked: boolean;
+  /**
+   * The layer's own displacement, in preview pixels.
+   *
+   * `offsetLeft`/`offsetTop` are layout values and deliberately blind to
+   * transforms — which is what makes them the right way to read glyph
+   * positions, and the wrong way to read the layer offset, because that *is* a
+   * transform. Reading it separately is what stopped the raster exporters
+   * silently dropping Offset X/Y out of every video and PNG.
+   */
+  offset: { x: number; y: number };
 };
 
 export type StageLayout = {
@@ -72,6 +82,23 @@ function staticRect(el: HTMLElement, root: HTMLElement): BoxLayout {
   }
 
   return { x, y, w: el.offsetWidth, h: el.offsetHeight };
+}
+
+/**
+ * The layer's translate, in pixels.
+ *
+ * Safe to read off the computed style because nothing animates `.stw-layer` —
+ * the templates transform characters and words, never the layer.
+ */
+function layerOffset(root: HTMLElement): { x: number; y: number } {
+  const transform = window.getComputedStyle(root).transform;
+  if (!transform || transform === "none") return { x: 0, y: 0 };
+  try {
+    const matrix = new DOMMatrixReadOnly(transform);
+    return { x: matrix.e, y: matrix.f };
+  } catch {
+    return { x: 0, y: 0 };
+  }
 }
 
 /** The canvas `font` shorthand for an element's computed type. */
@@ -153,6 +180,7 @@ export function captureLayout(canvasEl: HTMLElement): StageLayout {
         .map((el) => decor(el, canvasEl))
         .filter((entry): entry is DecorLayout => entry !== null),
       masked: display?.dataset.overflow !== "visible",
+      offset: layerOffset(root),
     };
   });
 

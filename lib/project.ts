@@ -12,13 +12,16 @@ import type {
 } from "@/lib/types";
 
 /**
- * Bumped whenever a stored project changes shape.
+ * Bumped whenever a stored project changes shape *or meaning*.
  *
  * v3 split the one ambiguous format into a project document and a style preset,
- * and stopped storing every phrase twice. Both older versions still open — see
+ * and stopped storing every phrase twice. v4 did not change the shape at all:
+ * it changed what `position.x` and `position.y` measure, from a percentage of
+ * the text block to a percentage of the canvas. Same bytes, different picture —
+ * which is exactly what a version is for. Every older version still opens; see
  * `lib/persistence/versions.ts`.
  */
-export const SCHEMA_VERSION = 3 as const;
+export const SCHEMA_VERSION = 4 as const;
 
 export const DEFAULT_POSITION: PositionConfig = { anchor: "center", x: 0, y: 0 };
 

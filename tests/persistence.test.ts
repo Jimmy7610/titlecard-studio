@@ -64,6 +64,7 @@ test("a project file round-trips the whole document", () => {
   const { project: restored, warnings } = parseProjectFile(projectFileJson(project));
 
   assert.deepEqual(warnings, [], "a file this build wrote needs no migration");
+  assert.equal(restored.schemaVersion, 4);
   assert.equal(restored.name, "Round trip");
   assert.deepEqual(restored.canvas, project.canvas);
   assert.equal(restored.paletteId, "ice");
@@ -203,6 +204,59 @@ test("a version 1 file also opens as a look, without its phrase", () => {
   assert.equal(parsed.preset.paletteId, "plasma");
   // The words it carried are offered back, never applied.
   assert.deepEqual(parsed.texts, ["Agent 3"]);
+});
+
+test("a version 3 file opens, and says its offsets now mean something else", () => {
+  // v4 changed no field shape at all. It changed what `position.x/y` measure,
+  // from a percentage of the text block to a percentage of the canvas — so the
+  // same bytes describe a different picture, which is what the version is for.
+  const withOffset = JSON.stringify({
+    $schema: "titlecard/project@3",
+    schemaVersion: 3,
+    name: "Nudged",
+    layers: [
+      { name: "A", text: "ONE", templateId: "fade-up", visible: true, position: { anchor: "center", x: 0, y: 18 } },
+    ],
+  });
+
+  const parsed = parseProjectFile(withOffset);
+  assert.equal(parsed.sourceVersion, 3);
+  assert.equal(parsed.project.schemaVersion, 4);
+  // The number is carried across, not converted: the old unit was a percentage
+  // of the rendered text block, and no file records that block's size.
+  assert.deepEqual(parsed.project.layers[0].position, { anchor: "center", x: 0, y: 18 });
+  assert.ok(
+    parsed.warnings.some((warning) => warning.includes("percentage of the canvas")),
+    "the reader has to say the offset may have moved",
+  );
+});
+
+test("a version 3 file with no offsets is upgraded quietly", () => {
+  // Nothing moved, so there is nothing to warn about. A notice on every old
+  // file would be noise, and noise is how real notices get ignored.
+  const parsed = parseProjectFile(
+    JSON.stringify({
+      schemaVersion: 3,
+      name: "Untouched",
+      layers: [{ name: "A", text: "ONE", templateId: "fade-up", visible: true }],
+    }),
+  );
+  assert.equal(parsed.project.schemaVersion, 4);
+  assert.equal(
+    parsed.warnings.some((warning) => warning.includes("percentage of the canvas")),
+    false,
+  );
+});
+
+test("a look has no positions, so v4 is a version bump and nothing else", () => {
+  const parsed = parseStylePreset(
+    JSON.stringify({ $schema: "titlecard/style-preset@3", schemaVersion: 3, paletteId: "ice" }),
+  );
+  assert.equal(parsed.preset.paletteId, "ice");
+  assert.equal(
+    parsed.warnings.some((warning) => warning.includes("percentage of the canvas")),
+    false,
+  );
 });
 
 test("a version 2 session recovers both copies of the text", () => {

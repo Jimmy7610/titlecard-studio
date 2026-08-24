@@ -79,7 +79,7 @@ test("a project file and a look are different documents", async ({ page }) => {
 
 test("opening a project file restores the whole document", async ({ page }) => {
   await seedSession(page, {
-    schemaVersion: 3,
+    schemaVersion: 4,
     name: "Seeded",
     layers: [{ text: "BEFORE", templateId: "fade-up", visible: true, name: "Headline" }],
   });
@@ -89,7 +89,7 @@ test("opening a project file restores the whole document", async ({ page }) => {
 
   const projectFile = JSON.stringify({
     $schema: "titlecard/project@3",
-    schemaVersion: 3,
+    schemaVersion: 4,
     name: "Imported scene",
     canvas: { formatId: "instagram-square", width: 1080, height: 1080, safeZones: false },
     layers: [
@@ -125,7 +125,7 @@ test("declining the confirmation keeps the current project", async ({ page }) =>
     mimeType: "application/json",
     buffer: Buffer.from(
       JSON.stringify({
-        schemaVersion: 3,
+        schemaVersion: 4,
         name: "Other",
         layers: [{ text: "REPLACED", templateId: "fade-up", visible: true }],
       }),

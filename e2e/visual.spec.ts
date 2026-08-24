@@ -123,17 +123,20 @@ const SCENES: Scene[] = [
     invertCanvas: true,
     background: { mode: "gradient", gradientStart: "#101826", gradientEnd: "#05080f", gradientAngle: 160 },
     typography: { fontId: "outfit", weight: 600, fontSize: 8 },
-    // Anchors, not offsets: the offset is a percentage of the layer's own text
-    // block, so at ±50% it cannot move a short line far enough to clear another
-    // one. Separating layers is what the nine-point anchor is for.
+    // The anchor puts each layer at an edge and the offset nudges it in from
+    // there. Both numbers are a share of the canvas, so 8 means the same
+    // distance for the headline as for the smaller line beneath it — which is
+    // the point, and was not true before: the offset used to be a percentage of
+    // the layer's own text block, and a short line could not be moved far
+    // enough to clear another one at any setting the slider allowed.
     layers: [
-      layer({ text: "WHAT IF", templateId: "fade-up", position: { anchor: "top", x: 0, y: 40 } }),
+      layer({ text: "WHAT IF", templateId: "fade-up", position: { anchor: "top", x: 0, y: 8 } }),
       layer({
         name: "Sub",
         text: "AI COULD BUILD",
         templateId: "punch-words",
         delay: 0.9,
-        position: { anchor: "bottom", x: 0, y: -40 },
+        position: { anchor: "bottom", x: 0, y: -8 },
         typography: { scale: 0.7 },
       }),
     ],

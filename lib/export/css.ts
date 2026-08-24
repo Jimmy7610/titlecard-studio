@@ -44,6 +44,16 @@ export const SPLIT_PRIMITIVES_CSS = `
   pointer-events: none;
 }
 
+/* The offset is displacement of the whole layer, and the layer is exactly the
+   canvas box — so a percentage here resolves against the canvas.
+
+   It used to sit on the child instead, where a percentage resolves against the
+   text block. The same number then meant a different distance for every phrase:
+   an offset of 40 moved a one-line subtitle by about 5% of the canvas and a
+   four-line headline by four times that, and no value on the slider could move
+   a short line far enough to clear another layer. Anchoring still happens
+   inside the layer, so the nine-point anchor and the offset compose the way
+   they read. */
 .stw-layer {
   position: absolute;
   inset: 0;
@@ -52,11 +62,8 @@ export const SPLIT_PRIMITIVES_CSS = `
   padding: 4% 6%;
   align-items: var(--stw-anchor-y, center);
   justify-content: var(--stw-anchor-x, center);
-  pointer-events: none;
-}
-
-.stw-layer > * {
   transform: translate(var(--stw-offset-x, 0%), var(--stw-offset-y, 0%));
+  pointer-events: none;
 }
 
 /* ------------------------------------------------------------------

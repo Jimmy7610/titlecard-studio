@@ -222,7 +222,7 @@ export function LayersPanel({ controller }: { controller: ProjectController }) {
 
         <Field
           label="Position"
-          hint="Anchor first, then nudge. The offset is a percentage of the text block, so it nudges by the same proportion of the type at any canvas size."
+          hint="Anchor first, then nudge. The offset is a percentage of the canvas, so the same value moves a subtitle and a headline by the same distance."
         >
           <div className="grid grid-cols-3 gap-0.5 rounded-lg bg-muted/50 p-0.5">
             {ANCHORS.map((anchor) => (

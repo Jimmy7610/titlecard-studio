@@ -41,7 +41,7 @@ import type {
  * lives in `project-file.ts`.
  */
 
-export const STYLE_PRESET_VERSION = 3 as const;
+export const STYLE_PRESET_VERSION = 4 as const;
 export const STYLE_PRESET_SCHEMA_ID = `titlecard/style-preset@${STYLE_PRESET_VERSION}`;
 export const STYLE_PRESET_EXTENSION = ".titlecard-look.json";
 
@@ -176,6 +176,8 @@ export function parseStylePreset(raw: string): ParsedStylePreset {
   } else if (sourceVersion === 2) {
     warnings.push("Upgraded a version 2 preset — only the look was taken from it.");
   }
+  // A look carries no positions, so v3 to v4 is a version bump and nothing
+  // else: the change was to what a layer offset measures, and looks have none.
 
   return {
     preset: lookFromLayeredDocument(source, warnings),

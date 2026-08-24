@@ -17,7 +17,9 @@ import {
   detectVersion,
   migrateV1Preset,
   migrateV2Project,
+  migrateV3Project,
   PersistenceError,
+  usesLegacyOffsets,
 } from "@/lib/persistence/versions";
 import { DEFAULT_PROJECT } from "@/lib/project";
 import type { ProjectState, TextLayer } from "@/lib/types";
@@ -37,7 +39,7 @@ import type { ProjectState, TextLayer } from "@/lib/types";
  * the `as unknown as` that used to reconcile them.
  */
 
-export const PROJECT_FILE_VERSION = 3 as const;
+export const PROJECT_FILE_VERSION = 4 as const;
 export const PROJECT_FILE_SCHEMA_ID = `titlecard/project@${PROJECT_FILE_VERSION}`;
 export const PROJECT_FILE_EXTENSION = ".titlecard.json";
 
@@ -104,11 +106,21 @@ export function parseProjectFile(raw: string): ParsedProject {
 
   let source: Bag = parsed;
   if (sourceVersion <= 1) {
-    source = migrateV2Project(migrateV1Preset(parsed));
+    source = migrateV3Project(migrateV2Project(migrateV1Preset(parsed)));
     warnings.push("Upgraded a version 1 file to the current schema.");
   } else if (sourceVersion === 2) {
-    source = migrateV2Project(parsed);
+    source = migrateV3Project(migrateV2Project(parsed));
     warnings.push("Upgraded a version 2 file to the current schema.");
+  } else if (sourceVersion === 3) {
+    source = migrateV3Project(parsed);
+  }
+
+  // v4 changed what a layer offset measures. Said plainly, and only to the
+  // projects it can actually have moved.
+  if (sourceVersion <= 3 && usesLegacyOffsets(parsed)) {
+    warnings.push(
+      "Layer offsets are now a percentage of the canvas rather than of the text block, so a layer that used one may have moved. The anchor is unchanged.",
+    );
   }
 
   const rawLayers = Array.isArray(source.layers) ? source.layers : [];

@@ -105,7 +105,7 @@ test("a session written by the previous schema is migrated, not abandoned", asyn
 
   // It is written forward under the current key, and only then is the old copy
   // dropped — a crash in between must leave the original where it was.
-  await expect.poll(async () => (await readSession(page))?.schemaVersion).toBe(3);
+  await expect.poll(async () => (await readSession(page))?.schemaVersion).toBe(4);
   const legacy = await page.evaluate(
     (key) => window.localStorage.getItem(key as string),
     LEGACY_SESSION_KEY,

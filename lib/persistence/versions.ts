@@ -107,6 +107,37 @@ export function migrateV1Preset(source: Bag): Bag {
 }
 
 /**
+ * True when a v3 document leans on the old, text-block-relative offset.
+ *
+ * The value itself does not move between v3 and v4 — there is nothing to
+ * convert it *with*. The old unit was a percentage of the rendered text block,
+ * and no file records the size of that block: it depends on the phrase, the
+ * face, the weight, the tracking and the canvas. So the number is carried
+ * across unchanged and the reader says so, rather than inventing a conversion
+ * factor that would be wrong for every project that is not the one it was
+ * tuned against.
+ *
+ * In practice the new reading is the one the value was reaching for. The old
+ * unit could not move a short line far enough to clear another layer at any
+ * setting the slider allowed.
+ */
+export function usesLegacyOffsets(source: Bag): boolean {
+  const layers = Array.isArray(source.layers) ? source.layers : [];
+  return layers.some((layer) => {
+    if (!isBag(layer)) return false;
+    const position = bagAt(layer, "position");
+    const x = typeof position.x === "number" ? position.x : 0;
+    const y = typeof position.y === "number" ? position.y : 0;
+    return x !== 0 || y !== 0;
+  });
+}
+
+/** Marks a v3 document as read; the offset fields are carried across as they are. */
+export function migrateV3Project(source: Bag): Bag {
+  return { ...source, schemaVersion: 4 };
+}
+
+/**
  * Reshapes a v2 document into the v3 project layout.
  *
  * v2 stored every phrase twice: once in `text.layers[]` and once in

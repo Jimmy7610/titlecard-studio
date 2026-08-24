@@ -234,6 +234,11 @@ function paintLayer(
   const { theme, project } = options;
   const textOpacity = project.color.opacity;
 
+  // The layer's own displacement. Every box below is a layout position, which
+  // is blind to the transform that carries this, so it is applied once here.
+  ctx.save();
+  ctx.translate(layer.offset.x, layer.offset.y);
+
   for (const word of layer.words) {
     ctx.save();
     // The mask box, not the word box: the word is the layout box and the mask
@@ -374,6 +379,8 @@ function paintLayer(
     );
     ctx.restore();
   }
+
+  ctx.restore();
 }
 
 export function paintFrame(

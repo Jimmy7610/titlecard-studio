@@ -10,9 +10,11 @@ import { expect, type Locator, type Page } from "@playwright/test";
  * depend on the network, and a way to park the timeline on an exact frame.
  */
 
-export const SESSION_KEY = "stw:session:v3";
+export const SESSION_KEY = "stw:session:v4";
+/** The key one schema back, for the migration specs. */
+export const PRIOR_SESSION_KEY = "stw:session:v3";
 export const LEGACY_SESSION_KEY = "stw:session:v2";
-export const PRESETS_KEY = "stw:presets:v3";
+export const PRESETS_KEY = "stw:presets:v4";
 export const ONBOARDING_KEY = "stw:onboarding-dismissed:v1";
 
 // Resolved from the repository root rather than `import.meta.url`: Playwright
@@ -160,6 +162,30 @@ export async function freezeAt(page: Page, seconds: number): Promise<void> {
   });
   await page.evaluate(
     () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  );
+}
+
+/**
+ * Parks the timeline on its last frame.
+ *
+ * Anything measuring where type actually sits has to measure it here. A running
+ * template deliberately puts glyphs outside their mask — `fade-up` starts a
+ * character a whole line below its home — so a rectangle read mid-flight
+ * describes the animation, not the layout.
+ */
+export async function freezeAtRest(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const stage = window.__titlecard;
+    if (!stage) throw new Error("the stage handle is not exposed");
+    await stage.settled();
+    const timeline = stage.timeline();
+    if (timeline) stage.seek(timeline.duration());
+  });
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
   );
 }
 

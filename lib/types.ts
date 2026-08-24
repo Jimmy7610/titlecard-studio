@@ -6,7 +6,7 @@ import type { TemplateId } from "@/lib/templates";
 export type TextTransform = "none" | "uppercase" | "lowercase";
 export type TextAlign = "left" | "center" | "right";
 
-/** Nine-point anchor, plus a free offset in percent of the text block's own box. */
+/** Nine-point anchor, plus a free offset in percent of the canvas. */
 export type PositionAnchor =
   | "top-left" | "top" | "top-right"
   | "left" | "center" | "right"
@@ -181,7 +181,7 @@ export type SemanticConfig = {
 };
 
 export type ProjectState = {
-  schemaVersion: 3;
+  schemaVersion: 4;
   name: string;
   canvas: CanvasConfig;
   typography: TypographyConfig;

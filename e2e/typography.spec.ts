@@ -1,6 +1,12 @@
 import { expect, test } from "@playwright/test";
 
-import { SESSION_KEY, dismissOnboarding, gotoEditor, waitForStage } from "./helpers";
+import {
+  SESSION_KEY,
+  dismissOnboarding,
+  freezeAtRest,
+  gotoEditor,
+  waitForStage,
+} from "./helpers";
 
 /**
  * Typography geometry that only a real layout engine can answer.
@@ -64,27 +70,6 @@ async function seedScene(page: import("@playwright/test").Page, scene: Scene) {
   );
 }
 
-/**
- * Parks the timeline on its resting frame.
- *
- * Every measurement below is about layout, and a running template deliberately
- * puts glyphs outside their own mask on the way in. Measuring a frame chosen by
- * whenever the test happened to look would assert on the animation instead.
- */
-async function rest(page: import("@playwright/test").Page) {
-  await page.evaluate(async () => {
-    const stage = window.__titlecard!;
-    await stage.settled();
-    stage.seek(stage.timeline()!.duration());
-  });
-  await page.evaluate(
-    () =>
-      new Promise<void>((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-      ),
-  );
-}
-
 /** Baseline of every word, derived from canvas metrics rather than from CSS. */
 async function wordBaselines(page: import("@playwright/test").Page) {
   return page.evaluate(() => {
@@ -112,7 +97,7 @@ test("a size-multiplied word sits on the same baseline as its neighbours", async
   await seedScene(page, { text: "one BIG two", wordStyles: { 1: { scale: 1.6 } } });
   await gotoEditor(page);
   await waitForStage(page);
-  await rest(page);
+  await freezeAtRest(page);
 
   const words = await wordBaselines(page);
   expect(words).toHaveLength(3);
@@ -134,7 +119,7 @@ test("the baseline holds across scales, faces and leadings", async ({ page }) =>
     await seedScene(page, scene);
     await gotoEditor(page);
     await waitForStage(page);
-    await rest(page);
+    await freezeAtRest(page);
 
     const words = await wordBaselines(page);
     const spread =
@@ -147,7 +132,7 @@ test("the mask still clips, and never clips a descender at rest", async ({ page 
   await seedScene(page, { text: "Typography gyjpq", leading: 0.8, wordStyles: { 1: { scale: 1.4 } } });
   await gotoEditor(page);
   await waitForStage(page);
-  await rest(page);
+  await freezeAtRest(page);
 
   const report = await page.evaluate(() => {
     const chars = [...document.querySelectorAll<HTMLElement>(".stw-preview .stw-char")];
@@ -176,7 +161,7 @@ test("the word is the layout box and the mask is the clip box", async ({ page })
   await seedScene(page, { text: "one BIG two", wordStyles: { 1: { scale: 1.6 } } });
   await gotoEditor(page);
   await waitForStage(page);
-  await rest(page);
+  await freezeAtRest(page);
 
   const roles = await page.evaluate(() => {
     const word = document.querySelector<HTMLElement>(".stw-preview .stw-word")!;

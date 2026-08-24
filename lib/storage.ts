@@ -33,8 +33,8 @@ const ONBOARDING_KEY = "stw:onboarding-dismissed:v1";
  *
  * Adding a version means adding its key here, not just bumping the constant.
  */
-const SESSION_KEYS = [SESSION_KEY, "stw:session:v2"] as const;
-const PRESET_KEYS = [PRESETS_KEY, "stw:presets:v2"] as const;
+const SESSION_KEYS = [SESSION_KEY, "stw:session:v3", "stw:session:v2"] as const;
+const PRESET_KEYS = [PRESETS_KEY, "stw:presets:v3", "stw:presets:v2"] as const;
 
 function readRaw(key: string): string | null {
   if (typeof window === "undefined") return null;
