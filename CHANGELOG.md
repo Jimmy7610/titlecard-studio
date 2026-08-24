@@ -1,5 +1,86 @@
 # Changelog
 
+## Production hardening
+
+The engineering caught up with the scope. No new features; the work was making
+the app harder to break, easier to test and honest about what it produces.
+
+### Reproducibility and CI
+
+`npm run check` was strong but only ran when someone remembered, and three of its
+four steps began with `npx --yes tsx` — a tool resolved off the registry at run
+time, so a clean clone could get a different version and a network hiccup could
+fail the suite. `tsx` is pinned, `check:react` resolves the project's own `tsc`,
+and GitHub Actions runs lint, unit tests, export checks, the generated-component
+type-check, the production build and the browser suite on every push.
+
+### Browser tests
+
+36 Playwright tests: boot, all 28 templates in one registry-driven pass,
+playback, editor controls, persistence and migration, exports, keyboard
+behaviour, and 8 curated screenshots. The screenshots render against a vendored
+font and a timeline parked at an exact frame, so they do not depend on the
+network or on which frame the machine happened to be on.
+
+### Fonts
+
+The unit of loading is a face — family, weight and style — not a family. Loading
+keyed by id alone returned a cached promise for the wrong variant, and the
+timeline measures those variants to derive every mask height. Italic was never
+requested at all, and the stage only ever asked for the project's default weight,
+so a layer overriding either was measured against a face nobody had loaded.
+
+Uploaded fonts became variants. A `.woff2` holds one weight and one style, but a
+custom family advertised 100–900 and registered every upload under 400 normal, so
+two uploads overwrote each other and any weight you picked was synthesised.
+
+### Projects, looks and the session
+
+One format was doing five jobs. Applying a saved "preset" could replace your
+canvas and your layer structure, and every phrase was stored twice — which is
+what forced an `as unknown as` at the serialisation boundary.
+
+There are now three documents: a **project** (`.titlecard.json`, the whole
+thing, replaces the canvas and asks first), a **look**
+(`.titlecard-look.json`, style only, never touches your words), and the
+**session** (a project file in `localStorage`). Storage keys walk backwards
+through the versions they know, so a schema bump no longer abandons a project
+that is still sitting in storage.
+
+### Word styling
+
+Styling is keyed by word index, so inserting a word before a styled one moved the
+style to the wrong word. Edits are now diffed: styling follows its word, and a
+word that cannot be matched confidently loses it rather than passing it to a
+neighbour.
+
+### Raster exports
+
+A PNG sequence held every frame as a byte array until it had all of them — heap
+that cannot spill to disk, and a 900-frame cap bounds nothing when 900 frames of
+4K is not 900 frames of 360p. Frames now stream into the archive as blobs, the
+job is costed in bytes before it starts, and both raster exports take an
+`AbortSignal` with a Cancel button behind it. Cancelling stops the recorder,
+stops every track, restores the timeline and downloads nothing.
+
+### Honesty
+
+"Standalone HTML" is one file, not an offline one: it fetches GSAP and its web
+fonts. The generated file now lists exactly what it loads and how to make it
+offline, and the export panel says the same thing.
+
+### Accessibility
+
+Every switch in the editor was unlabelled — Base UI puts the `id` on a hidden
+checkbox, so `for=` named that rather than the button a user focuses.
+
+### Documentation
+
+The README became a product README. The architecture, typography, export,
+persistence and testing detail moved to `docs/`, with `CONTRIBUTING.md` and a
+`ROADMAP.md` that names the remaining limitations instead of burying them.
+
+
 ## Stabilisation pass on v2
 
 A QA pass over the merged v2: every template, every face, every export path
