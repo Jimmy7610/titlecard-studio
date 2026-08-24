@@ -65,6 +65,37 @@ v1 file and a v3 file go through exactly the same validation.
 - **v2** stored the phrases twice and lived under different storage keys. Where
   the two copies disagree the layer wins.
 - **v3** is the split above.
+- **v4** did not change the shape at all.
+
+<a id="version-4"></a>
+
+### Version 4: same fields, different meaning
+
+`position.x` and `position.y` used to be a percentage of a layer's own rendered
+text block. They are a percentage of the canvas now — see the P1 note in
+[ROADMAP.md](ROADMAP.md#closed-in-10) for why the old reading could not work.
+
+A version is for exactly this: the bytes are identical and the picture is not.
+So the number is **carried across untouched** and the reader says so.
+
+There is no honest conversion. The old unit was a percentage of the rendered
+text block, and no file records that block's size — it falls out of the phrase,
+the face, the weight, the tracking and the canvas, none of which the number
+knows about. A factor tuned against one project would be wrong for every other
+one, and would be wrong silently. Carrying the value over and naming the change
+is the only version of this that does not quietly rewrite someone's work.
+
+What actually happens when a v1–v3 file is opened:
+
+- The anchor is untouched. A layer anchored bottom-right is still bottom-right.
+- A layer whose offset was `0` — most of them — is pixel-identical.
+- A layer that used an offset **may have moved**, and the file opens with a
+  warning saying so in those words. In practice it moves further in the
+  direction it was already going, which is usually what the value was reaching
+  for: the old unit could not move a short line far enough to clear another
+  layer at any setting the slider allowed.
+- Looks are unaffected. A look carries no positions, so v4 is a version bump
+  and nothing else for them.
 
 Storage keys walk **backwards** through the versions they know. A reader that
 only looked at the current key would abandon a project the moment the schema

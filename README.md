@@ -20,9 +20,9 @@ what the rest of the design follows from.
 |---|---|
 | **28 templates** | Six categories, from restrained reveals to seeded scatter. All data-driven from one `MotionSpec`. |
 | **Typography** | 14 curated faces plus your own uploads, per weight and per style. Size, tracking, leading, case, italic, and the animated unit. |
-| **Layers** | Each with its own text, template, timing, position and typography. |
+| **Layers** | Each with its own text, template, timing, position and typography. Anchor to any of nine points, then nudge — the offset is a share of the canvas, so the same value moves a subtitle and a headline by the same distance. |
 | **Word styling** | Colour, gradient, weight, size, glow, opacity and entrance delay, per word. |
-| **Canvas** | YouTube, TikTok, square, portrait, cinema, or a custom size, with safe-zone guides. |
+| **Canvas** | YouTube, TikTok, square, portrait, cinema, or a custom size, with safe-zone guides. If a layer stops fitting, the canvas says so rather than quietly cropping it — and it never shrinks type you chose. |
 | **Looks** | Palette, type, motion and background in one click. Applying one never touches your words. |
 | **Smart Suggest** | Reads the phrase against an English and Swedish lexicon and *proposes*. It never locks the picker. |
 

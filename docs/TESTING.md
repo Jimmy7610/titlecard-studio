@@ -28,13 +28,21 @@ into the tree and runs the project's own `tsc` over them. "It is a valid string"
 is not the bar; it has to compile in someone else's strict project.
 
 **Browser** (`e2e/`, Playwright) — boot, all 28 templates, playback, editor
-controls, persistence and migration, exports, keyboard behaviour, and a small
-set of accessibility invariants.
+controls, persistence and migration, exports, keyboard behaviour, a small set of
+accessibility invariants, and the three things only a layout engine can answer:
+typography geometry (`typography.spec.ts`), layer position (`position.spec.ts`)
+and the canvas overflow warning (`overflow.spec.ts`).
+
+Anything measuring where type *sits* measures it at the resting frame, through
+`freezeAtRest`. A running template deliberately puts glyphs outside their mask,
+so a rectangle read mid-flight describes the animation rather than the layout —
+which is the same distinction the overflow check itself is built on.
 
 `e2e/a11y.spec.ts` is not a WCAG audit. It asserts the handful of properties that
 have already regressed once each: every operable control has an accessible name,
 the export dialog traps focus and closes on `Escape`, the transport slider is
-keyboard-operable and reports its position, the split spans stay hidden from
+keyboard-operable and reports its position, every settings slider is announced
+by name rather than as an anonymous "slider", the split spans stay hidden from
 assistive tech, and `prefers-reduced-motion` commits the resting frame.
 
 ## Why there is a browser suite at all
@@ -91,3 +99,6 @@ right, and commit them once.
 - **A template needs nothing.** The registry-driven spec picks it up.
 - **An export change needs a parity assertion**, not a snapshot of the output.
   What matters is that the preview and the export agree.
+- **A geometry change needs a browser test at the resting frame.** Measuring
+  while a template is playing is how a passing assertion ends up describing the
+  animation instead of the layout.

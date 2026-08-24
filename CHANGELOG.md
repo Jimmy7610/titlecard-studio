@@ -1,5 +1,121 @@
 # Changelog
 
+## 1.0.0
+
+The three P1 defects the roadmap had been carrying are fixed, each at its cause.
+No new product surface.
+
+### A scaled word sits on the shared baseline
+
+A word with a size multiplier sat about `0.1em` below its neighbours. The cause
+was structural rather than arithmetic: an inline-block whose `overflow` is not
+`visible` takes its **bottom margin edge** as its baseline, so for as long as
+`.stw-word` was both the layout box and the clipping mask, it had no text
+baseline to align on. Equal-sized neighbours hid it — bottom-aligned and
+baseline-aligned look identical when the boxes match — and a size multiplier
+made the two disagree by the difference in descent.
+
+The clip moved inward to a new `.stw-mask`. The word keeps `overflow: visible`
+and its own strut, the strut sits on the glyphs' baseline, and
+`vertical-align: baseline` means what it says at any size. The mask is
+`vertical-align: top`, which is what leaves the strut to set the baseline.
+
+The line box is unchanged: the word still contributes the same margin box, so
+leading, wrapping, the underline and the tight-leading correction all measure
+what they measured before. Every renderer emits the new element — the editor,
+the standalone HTML, the React component, the GSAP source and the template
+gallery — and the video layout capture clips to the mask rather than the word.
+
+### Layer offsets are a share of the canvas
+
+`Offset X` and `Offset Y` were a `translate()` percentage applied to the text
+block, and CSS resolves a translate percentage against the element being
+transformed. The same number therefore meant a different distance for every
+phrase: an offset of 40 moved a one-line subtitle by about 5% of the canvas and
+a four-line headline by four times that, and no value the slider allowed could
+move a short line far enough to clear another layer.
+
+The transform now sits on `.stw-layer`, which is `position: absolute; inset: 0`
+— exactly the canvas box. `+10` on X is a tenth of the canvas width for a
+subtitle and for a headline alike. Anchoring is unaffected: the flexbox that
+places the block still runs inside the layer, so the anchor and the offset
+compose the way they read. All nine anchors are tested with an offset.
+
+This exposed a second bug nothing had reported. The raster exporters read
+geometry through `offsetLeft`/`offsetTop`, which are layout values and blind to
+transforms — right for glyph positions, wrong for the layer offset, because the
+offset *is* a transform. **Video and PNG exports were dropping Offset X and Y
+out of every frame.** The layer's translate is now read from its computed matrix
+and applied once per layer while painting.
+
+**Schema 4.** The shape did not change; the meaning did. The offset value is
+carried across untouched and a file that used one opens with a warning saying
+what changed and that the anchor did not. There is no honest conversion: the old
+unit was a percentage of the rendered text block, and no file records that
+block's size — it falls out of the phrase, face, weight, tracking and canvas. A
+factor tuned against one project would be wrong for every other, silently.
+Anchors are untouched, a layer with no offset is pixel-identical, and looks
+carry no positions so v4 is a version bump and nothing else for them.
+
+### The canvas says when the type no longer fits
+
+Size is canvas-relative on purpose, so a phrase set large enough is cut by
+`overflow: hidden`. That is the control behaving as documented; nothing said so
+at the moment it happened. It is now reported under the canvas, in a live region
+a screen reader announces, per layer, on both axes, naming the layer.
+
+Nothing is auto-shrunk. The size is a control the user set deliberately.
+
+The measurement is of layout boxes, not of what is on screen: almost every
+template begins with its characters outside the canvas, so screen rectangles
+would warn about every project for the first second and then stop. A layout box
+ignores transforms and transforms are the whole animation, so it describes the
+resting frame without pausing or seeking anything. The layer's own offset is
+added back, so a layer nudged past the edge is caught too. It re-measures on the
+phrase, the face, weight, size, tracking, leading, per-word multipliers, the
+canvas format and the layer position, and again once the real face has loaded —
+and it clears when the composition fits again.
+
+The first measurement is synchronous rather than on a frame: `requestAnimation-
+Frame` does not run in a tab that is not compositing, so a warning that waited
+for a frame would never appear for anyone who set a composition up in a
+background tab. It never writes to the DOM, it lives outside `.stw-canvas` where
+the raster exporters cannot reach it, and exporting an overflowing composition
+still works. All three are asserted.
+
+### Accessibility
+
+Every slider in the settings panels was announced as just "slider". The label
+was on the Base UI root, but the element carrying `role="slider"` is the thumb,
+so Size, Tracking, Leading, Speed and Stagger were all anonymous to a screen
+reader. The label is forwarded to the thumb.
+
+### Shared geometry
+
+`staticRect` and the layer-translate read moved out of the video exporter into
+`lib/geometry.ts`. The overflow check and the exporter now measure through the
+same code rather than through two copies that could drift.
+
+### Tests
+
+103 unit tests and 71 browser tests, none skipped.
+
+New: `e2e/typography.spec.ts` (baseline and mask geometry), `e2e/position.spec.ts`
+(anchors, offsets, the raster capture, the v3 migration), `e2e/overflow.spec.ts`
+(the warning). `tests/persistence.test.ts` gains the v4 migration cases.
+
+Two existing tests were made deterministic rather than left to chance. The
+timeline-slider accessibility test pressed a key while the composition was still
+playing, so the time moved whether or not the key did anything — it pauses and
+rewinds first now. The position specs stage their storage write on a page that
+does not mount the editor, so the editor's own debounced save cannot land on top
+of the seed.
+
+One visual baseline changed. `multi-layer-scene` asked for `+40/-40` to separate
+two layers and, under the old unit, barely moved them — the spec's own comment
+said the offset could not do that job. It nudges by 8 from each anchor now and
+renders as the scene always described.
+
 ## Production hardening
 
 The engineering caught up with the scope. No new features; the work was making

@@ -8,18 +8,40 @@ Every reveal happens *inside the word's own bounding box*. No character travels
 across the stage. The DOM every template animates against:
 
 ```html
-<span class="stw-word">           <!-- overflow: hidden — the mask box -->
-  <span class="stw-flash"></span> <!-- colour slab, behind the glyphs -->
-  <span class="stw-char">         <!-- the transformed element -->
-    <span class="stw-glyph"></span>  <!-- scramble overlay, absolute -->
-    <span class="stw-real">A</span>  <!-- always holds the layout -->
+<span class="stw-word">             <!-- the layout box: baseline, word type -->
+  <span class="stw-mask">           <!-- overflow: hidden — the clip box -->
+    <span class="stw-flash"></span> <!-- colour slab, behind the glyphs -->
+    <span class="stw-char">         <!-- the transformed element -->
+      <span class="stw-glyph"></span>  <!-- scramble overlay, absolute -->
+      <span class="stw-real">A</span>  <!-- always holds the layout -->
+    </span>
   </span>
 </span>
 ```
 
-Four relationships carry the whole system.
+Five relationships carry the whole system.
 
-**The mask is the font's own line box.** `.stw-word` is set to
+<a id="the-word-and-its-mask"></a>
+
+**The word is not the mask.** They are two boxes because one box cannot do both
+jobs. An inline-block whose `overflow` is not `visible` takes its *bottom margin
+edge* as its baseline — so for as long as the word was itself the clipper, it
+had no text baseline to align on. Neighbouring words at the same size hid it,
+because equal boxes bottom-aligned look identical to baseline-aligned. Give one
+word a size multiplier and it sat about `0.1em` low: the difference in descent
+between the two sizes.
+
+With the clip moved inward, `.stw-word` keeps `overflow: visible` and its own
+strut at `line-height: normal`, the strut sits on the glyphs' baseline, and
+`vertical-align: baseline` means what it says at any size. The mask is
+`vertical-align: top`, which is what leaves the strut to set the baseline —
+baseline-aligning a box that clips is the original bug.
+
+The line box is unchanged by the split. The word still contributes the same
+margin box, so leading, wrapping and the rule below all measure what they
+measured before.
+
+**The mask is the font's own line box.** `.stw-mask` is set to
 `line-height: normal`, so it is exactly one line box tall — the typeface's own
 content area, whatever face is loaded. A character parked at `translateY(110%)`
 sits clear of it with headroom to spare, and a descender can never be clipped at
@@ -56,7 +78,24 @@ the overlay is painted on top of a slot that is already the right size.
 
 A handful of templates — the ones whose whole idea is oversize scale or a seeded
 scatter — opt out of the clip with `unmasked: true`, because the mask does not
-bound those, it amputates them.
+bound those, it amputates them. The opt-out is on the mask
+(`.stw[data-overflow="visible"] .stw-mask`), not on the word: the word is
+carrying the baseline and must keep it either way.
+
+## When the type does not fit
+
+Size is a percentage of the canvas width (`cqw`), so a phrase set large enough
+is wider or taller than the canvas and `overflow: hidden` cuts it. That is the
+size control doing what it says, and nothing shrinks the type to compensate —
+but it is reported, per layer and on both axes, in a live region under the
+canvas.
+
+The measurement is of *layout* boxes, not of what is on screen. Almost every
+template begins with its characters outside the canvas, so a screen rectangle
+would say every project overflows for the first second. A layout box ignores
+transforms, and transforms are the whole animation, so it describes the resting
+frame without pausing or seeking anything. See `lib/geometry.ts` and
+`lib/overflow.ts`.
 
 ---
 

@@ -7,42 +7,24 @@ Ranked P0 (correctness a user will hit) → P2 (nice to have).
 
 ## Known limitations
 
-### P1 — a scaled word does not share the line's baseline
+### Closed in 1.0
 
-A word with a size multiplier sits about `0.1em` off the baseline of its
-neighbours. It was most of an ascender before the mask box was bottom-aligned;
-what remains is the difference in descent between the two sizes.
+Three P1s were listed here and are now fixed. Each has tests; none is a
+workaround.
 
-CSS cannot express a font's descent, and an inline-block that clips takes its
-bottom margin edge as its baseline, so it cannot be baseline-aligned at all.
-
-*Fix:* an inner mask element inside `.stw-word`, letting the outer box be
-baseline-aligned. That is a markup change across three renderers plus the video
-layout capture, so it needs its own change with its own visual baselines.
-
-### P1 — the position offset is a percentage of the text block
-
-`Offset X/Y` is a `translate()` percentage, which CSS resolves against the
-element's own size. At the `±50%` the slider allows, a short line cannot be moved
-far enough to clear another one, so layers can only really be separated with the
-nine-point anchor.
-
-The offset is also inconsistent between layers: the same value moves a large
-headline further than a small one.
-
-*Fix:* express the offset against the canvas. `cqh` would do it but needs
-`container-type: size` on the canvas, which interacts with the `aspect-ratio`
-sizing — worth doing, worth testing carefully, and it changes the composition of
-every existing project, so it needs a migration.
-
-### P1 — text larger than the canvas is clipped, with no warning
-
-Size is explicitly canvas-relative (`cqw`), so a long phrase at a large size
-overflows and `overflow: hidden` cuts it. That is the control behaving as
-documented, but nothing says so at the moment it happens.
-
-*Fix:* detect the overflow and surface it in the canvas panel. Auto-shrinking
-would fight an explicit control and is the wrong answer.
+- **A scaled word sat about `0.1em` off the shared baseline.** An inline-block
+  that clips takes its bottom margin edge as its baseline, so the word box
+  could not be baseline-aligned while it was also the clipper. The clip moved
+  to an inner `.stw-mask`; the word keeps its own strut and its baseline.
+  See [TYPOGRAPHY.md](TYPOGRAPHY.md#the-word-and-its-mask).
+- **The position offset was a percentage of the text block.** A `translate()`
+  percentage resolves against the transformed element, so the same number meant
+  a different distance for every phrase. The transform moved onto `.stw-layer`,
+  which is the canvas box. Schema 4, with a migration.
+  See [PRESETS-AND-PROJECTS.md](PRESETS-AND-PROJECTS.md#version-4).
+- **Text larger than the canvas was clipped with no warning.** It is reported
+  under the canvas, per layer, on both axes, and it clears when the composition
+  fits again. Nothing is auto-shrunk.
 
 ### P2 — raster export approximates three things
 
@@ -65,9 +47,6 @@ with no baseline fails on first run rather than silently accepting one. See
 
 ## Planned hardening
 
-- **Overflow warning** for text larger than the canvas (P1 above).
-- **Canvas-relative offsets**, with a migration (P1 above).
-- **An inner mask element**, to put scaled words on the shared baseline (P1 above).
 - **File System Access API** for PNG sequences where it exists, writing frames
   straight to a directory instead of building an archive in memory at all. The
   current streaming archive is bounded; this would make it unbounded.
@@ -92,9 +71,6 @@ filed automatically.
 
 | Title | Label | Body |
 |---|---|---|
-| Scaled words sit ~0.1em off the shared baseline | `bug` `typography` `P1` | The P1 section above, with the inner-mask fix. |
-| Position offsets are relative to the text block, not the canvas | `bug` `P1` | The P1 section above; note the migration requirement. |
-| Warn when text overflows the canvas | `enhancement` `P1` | The P1 section above. |
 | Write PNG sequences through the File System Access API | `enhancement` `P2` | Planned hardening above. |
 | Add WebKit to the browser test matrix | `test` `P2` | Planned hardening above. |
 | Generate Linux visual baselines | `test` `P2` | One-time: run CI, download the `playwright-snapshots` artifact, verify the images, commit. |

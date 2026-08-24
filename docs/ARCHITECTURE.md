@@ -11,6 +11,8 @@ lib/export/          the export model and the four generated documents
 lib/persistence/     the three file formats and their migrations
 lib/templates/       the template registry
 lib/video/           raster export: layout capture, painting, zip
+lib/geometry.ts      transform-blind layout boxes, shared by the two readers
+lib/overflow.ts      does the type still fit the canvas
 e2e/                 browser tests and the curated screenshot baselines
 tests/               unit tests
 scripts/             codegen checks and sample emission

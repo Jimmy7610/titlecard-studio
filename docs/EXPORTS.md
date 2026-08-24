@@ -22,6 +22,11 @@ own `offsetLeft`/`offsetTop`, which are unaffected by transforms, so kerning,
 tracking, font metrics and line breaking are the browser's, not a
 reimplementation.
 
+The one thing a layout box cannot tell you is a layer's position offset, because
+that *is* a transform. It is read back separately, from the layer's computed
+matrix, and applied once per layer while painting. Until it was, video and PNG
+exports silently dropped Offset X and Y out of every frame.
+
 The `.stw-*` CSS has exactly one copy, in `lib/export/css.ts`. The editor injects
 that string and every export inlines it, so a preview and an exported file cannot
 drift apart through a stale stylesheet.
@@ -51,8 +56,10 @@ what the file loads.
 
 Frames are rasterised from the running timeline, not screen-captured, so a clip
 is not affected by anything else on the machine. `lib/video/layout.ts` reads the
-static geometry once through `offsetLeft`/`offsetTop` — layout values, unaffected
-by transforms — and only the animated part is recomputed per frame.
+static geometry once through `lib/geometry.ts` — layout values, unaffected by
+transforms — and only the animated part is recomputed per frame. The editor's
+overflow check measures through the same module, so "does this fit" and "where
+does this get painted" cannot answer from two different geometries.
 
 Both raster exports take an `AbortSignal` and check it every frame. Cancelling
 stops the recorder, stops every track, restores the timeline, releases the
