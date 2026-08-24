@@ -158,7 +158,7 @@ export function Editor() {
   // does. Re-published whenever the preview remounts, which is what the layer
   // count changing does.
   const hasStage = model.layers.length > 0;
-  React.useEffect(() => installTestHook(hasStage ? stage.current : null), [hasStage, model]);
+  React.useEffect(() => installTestHook(hasStage ? stage.current : null), [hasStage]);
 
   // Reading a project written by an older build is the one moment a file
   // changes shape without the user asking, so it is the one moment worth

@@ -28,7 +28,14 @@ into the tree and runs the project's own `tsc` over them. "It is a valid string"
 is not the bar; it has to compile in someone else's strict project.
 
 **Browser** (`e2e/`, Playwright) — boot, all 28 templates, playback, editor
-controls, persistence and migration, exports, keyboard behaviour.
+controls, persistence and migration, exports, keyboard behaviour, and a small
+set of accessibility invariants.
+
+`e2e/a11y.spec.ts` is not a WCAG audit. It asserts the handful of properties that
+have already regressed once each: every operable control has an accessible name,
+the export dialog traps focus and closes on `Escape`, the transport slider is
+keyboard-operable and reports its position, the split spans stay hidden from
+assistive tech, and `prefers-reduced-motion` commits the resting frame.
 
 ## Why there is a browser suite at all
 
