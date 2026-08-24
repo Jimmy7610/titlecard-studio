@@ -4,6 +4,8 @@
 and export it as a standalone page, a React component, GSAP source, a video or a
 PNG sequence.
 
+**Live demo:** https://titlecard-studio.vercel.app/
+
 <!-- A recording of the editor belongs here. Repo-owned, not hotlinked. -->
 <!-- ![Titlecard](docs/media/titlecard.gif) -->
 
@@ -107,6 +109,8 @@ The app is a static Next.js build with no server requirements.
 npm run build
 npm run start
 ```
+
+The public deployment is available at https://titlecard-studio.vercel.app/.
 
 On Vercel: import the repository, framework preset **Next.js**, build command
 `npm run build`, no environment variables. See
