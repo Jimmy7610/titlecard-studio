@@ -111,6 +111,19 @@ export function Stage({ model, reduceMotion, onReady, ref }: StageProps) {
         if (document.fonts) await document.fonts.ready;
       })
       .catch(() => undefined)
+      .then(
+        () =>
+          // `document.fonts.ready` resolves when the face is downloaded, which
+          // is earlier than when the injected stylesheet has been applied to
+          // these elements. Building on that promise measures the OUTGOING
+          // font's box and bakes it in: GSAP resolves yPercent to px at build
+          // time, so a stale box height parks every glyph outside its own mask
+          // and the line renders blank. Two frames guarantees a style recalc
+          // and a paint with the new face before anything is measured.
+          new Promise<void>((resolve) => {
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+          }),
+      )
       .then(() => {
         if (!cancelled) setLoadedFonts(fontKey);
       });
@@ -175,14 +188,29 @@ export function Stage({ model, reduceMotion, onReady, ref }: StageProps) {
           at: layer.at,
           delays: layer.wordDelays,
           granularity: layer.split.granularity,
+          // Per-layer overrides and word styles change glyph metrics, and
+          // therefore the pixel values GSAP bakes in. They belong here.
+          typography: layer.layer.typography,
+          wordStyles: layer.layer.wordStyles,
         })),
+        // Size, tracking, weight, case and italic all resize the boxes the
+        // timeline measures. Tracking only the font id was not enough.
+        typography: project.typography,
         motion: project.motion,
         theme: [theme.ink, theme.canvas, theme.hot, theme.warm, theme.sun, theme.gradient],
         ease: model.easeOverride,
         reduceMotion,
         fonts: loadedFonts,
       }),
-    [layers, project.motion, theme, model.easeOverride, reduceMotion, loadedFonts],
+    [
+      layers,
+      project.typography,
+      project.motion,
+      theme,
+      model.easeOverride,
+      reduceMotion,
+      loadedFonts,
+    ],
   );
 
   useGSAP(
