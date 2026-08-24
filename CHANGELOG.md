@@ -98,11 +98,20 @@ same code rather than through two copies that could drift.
 
 ### Tests
 
-103 unit tests and 71 browser tests, none skipped.
+103 unit tests and 72 browser tests, none skipped.
 
 New: `e2e/typography.spec.ts` (baseline and mask geometry), `e2e/position.spec.ts`
 (anchors, offsets, the raster capture, the v3 migration), `e2e/overflow.spec.ts`
-(the warning). `tests/persistence.test.ts` gains the v4 migration cases.
+(the warning) and `e2e/raster.spec.ts`. `tests/persistence.test.ts` gains the v4
+migration cases.
+
+`raster.spec.ts` is the only test that has ever looked at an exported pixel. It
+runs the real PNG pipeline end to end and checks the ink landed where the
+preview says — which is how the dropped-offset bug above would have been caught
+years earlier. Each of the three fixes was verified by reverting it and watching
+the new tests fail: the baseline spread goes from under half a pixel to 4.9, and
+the exported ink from three quarters of the way down the frame back to the
+middle.
 
 Two existing tests were made deterministic rather than left to chance. The
 timeline-slider accessibility test pressed a key while the composition was still

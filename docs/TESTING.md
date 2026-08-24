@@ -33,6 +33,13 @@ accessibility invariants, and the three things only a layout engine can answer:
 typography geometry (`typography.spec.ts`), layer position (`position.spec.ts`)
 and the canvas overflow warning (`overflow.spec.ts`).
 
+`e2e/raster.spec.ts` is the only test that looks at an exported *pixel*. It runs
+the real PNG pipeline — layout capture, painting, the ZIP writer, the download —
+extracts the last frame and asks where the ink landed. It exists because a bug
+lived in that path invisibly: layout geometry is blind to transforms and a
+layer's position offset is a transform, so video and PNG exports dropped Offset
+X and Y out of every frame while every DOM-level assertion still passed.
+
 Anything measuring where type *sits* measures it at the resting frame, through
 `freezeAtRest`. A running template deliberately puts glyphs outside their mask,
 so a rectangle read mid-flight describes the animation rather than the layout —
