@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx --test \"tests/*.test.ts\"",
+    "test": "node scripts/run-unit-tests.mjs",
     "check:exports": "tsx scripts/check-exports.ts",
     "check:react": "tsx scripts/check-react.ts",
     "check": "npm run lint && npm run test && npm run check:exports && npm run check:react && npm run build",
