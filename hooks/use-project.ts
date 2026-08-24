@@ -49,6 +49,8 @@ export type ProjectController = {
   layer: TextLayer;
   /** True when the project came back from a previous session. */
   restored: boolean;
+  /** True when that session had to be migrated from an older schema. */
+  migrated: boolean;
   update: (update: ProjectUpdate, options?: UpdateOptions) => void;
   updateLayer: (patch: Partial<TextLayer>, options?: UpdateOptions) => void;
   undo: () => void;
@@ -68,7 +70,7 @@ type History = {
 };
 
 /** The server has no storage, so it always answers with the blank project. */
-const SERVER_SESSION = { project: DEFAULT_PROJECT, restored: false };
+const SERVER_SESSION = { project: DEFAULT_PROJECT, restored: false, migrated: false };
 
 const initial = (project: ProjectState): History => ({
   present: project,
@@ -169,6 +171,7 @@ export function useProject(): ProjectController {
     project,
     layer: activeLayer(project),
     restored: session.restored,
+    migrated: session.migrated,
     update,
     updateLayer,
     undo,

@@ -66,10 +66,10 @@ const CODE_EXPORTS: readonly {
     note: ".tsx · drop-in client component, needs gsap + @gsap/react",
   },
   {
-    kind: "preset",
+    kind: "project",
     icon: BracesIcon,
-    title: "Preset",
-    note: ".json · the full look, versioned and re-importable",
+    title: "Titlecard project",
+    note: ".titlecard.json · every layer, phrase and word style — the whole document",
   },
 ];
 

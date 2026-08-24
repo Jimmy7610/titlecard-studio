@@ -5,15 +5,15 @@ import { aspectLabel, canvasFromFormat, clampEdge } from "../lib/canvas-formats"
 import { buildExportModel, generate } from "../lib/export";
 import { resolveEase } from "../lib/easing";
 import { BUILTIN_PRESETS, applyPreset } from "../lib/presets/builtin";
-import { PresetError, parsePreset, presetJson } from "../lib/presets/schema";
 import { DEFAULT_PROJECT } from "../lib/project";
 import { TEMPLATES, TEMPLATE_CATEGORIES, getTemplate, hasTemplate } from "../lib/templates";
 import type { ProjectState } from "../lib/types";
 
 /**
- * Preset handling is the other high-risk area: it is the only place the app
- * reads data it did not write, and it must never crash, never half-apply, and
- * never take a user's phrase away from them.
+ * The built-in looks, the template registry and the export model.
+ *
+ * File parsing and migration live in `persistence.test.ts`; this covers the
+ * data the app ships with and the model every exporter is built from.
  */
 
 const project: ProjectState = {
@@ -33,130 +33,6 @@ const project: ProjectState = {
     },
   ],
 };
-
-test("a preset survives a round trip", () => {
-  const parsed = parsePreset(presetJson(project));
-
-  assert.equal(parsed.project.paletteId, "ice");
-  assert.equal(parsed.project.invertCanvas, true);
-  assert.deepEqual(parsed.project.canvas, project.canvas);
-  assert.equal(parsed.project.typography.fontId, "playfair");
-  assert.equal(parsed.project.typography.weight, 700);
-  assert.equal(parsed.project.motion.easing, "cinematic");
-  assert.equal(parsed.project.layers[0].templateId, "gold-sweep");
-  assert.deepEqual(parsed.project.layers[0].wordStyles, { 1: { gradient: true, scale: 1.2, delay: 0.3 } });
-  // The phrase comes back separately, so importing a look cannot overwrite one.
-  assert.deepEqual(parsed.texts, ["RÄKSMÖRGÅS ✨"]);
-});
-
-test("migrates a version 1 preset without losing anything it could express", () => {
-  const v1 = JSON.stringify({
-    $schema: "semantic-text-animator/preset@1",
-    phrase: "Agent 3",
-    template: "odometer-roll",
-    palette: "plasma",
-    glyphPool: "katakana",
-    motion: { speed: 1.6, stagger: 0.012, loop: false },
-    type: { fontSize: 7.5, tracking: 0.2, leading: 1.6, weight: 500 },
-    canvas: "dark",
-  });
-
-  const parsed = parsePreset(v1);
-  assert.equal(parsed.sourceVersion, 1);
-  assert.equal(parsed.project.layers[0].templateId, "odometer-roll");
-  assert.equal(parsed.project.layers[0].glyphPool, "katakana");
-  assert.equal(parsed.project.paletteId, "plasma");
-  assert.equal(parsed.project.invertCanvas, true);
-  assert.equal(parsed.project.motion.speed, 1.6);
-  assert.equal(parsed.project.motion.stagger, 0.012);
-  assert.equal(parsed.project.motion.loop, false);
-  assert.equal(parsed.project.typography.fontSize, 7.5);
-  assert.equal(parsed.project.typography.leading, 1.6);
-  assert.equal(parsed.project.typography.weight, 500);
-  assert.deepEqual(parsed.texts, ["Agent 3"]);
-  assert.ok(parsed.warnings.some((w) => w.includes("version 1")));
-});
-
-test("a v1 preset with no version marker is still recognised", () => {
-  const parsed = parsePreset(JSON.stringify({ phrase: "Hi", template: "agent-reveal" }));
-  assert.equal(parsed.sourceVersion, 1);
-  assert.equal(parsed.project.layers[0].templateId, "agent-reveal");
-});
-
-test("unknown fields from a newer schema are ignored, not fatal", () => {
-  const parsed = parsePreset(
-    JSON.stringify({ schemaVersion: 99, name: "Future", somethingNew: { deeply: [1, 2] }, layers: [{ text: "Hi" }] }),
-  );
-  assert.equal(parsed.project.name, "Future");
-  assert.ok(parsed.warnings.some((w) => w.includes("newer version")));
-});
-
-test("an unknown template degrades instead of throwing", () => {
-  const parsed = parsePreset(JSON.stringify({ schemaVersion: 2, layers: [{ templateId: "no-such", text: "Hi" }] }));
-  assert.equal(parsed.project.layers[0].templateId, "agent-reveal");
-  assert.ok(parsed.warnings.some((w) => w.includes("Unknown template")));
-});
-
-test("missing sections fall back to defaults", () => {
-  const parsed = parsePreset('{"schemaVersion":2}');
-  assert.deepEqual(parsed.project.typography, DEFAULT_PROJECT.typography);
-  assert.deepEqual(parsed.project.motion, DEFAULT_PROJECT.motion);
-  assert.equal(parsed.project.layers.length, 1);
-});
-
-test("out-of-range numbers are clamped, not trusted", () => {
-  const parsed = parsePreset(
-    JSON.stringify({ schemaVersion: 2, motion: { speed: 9999, stagger: -5 }, typography: { weight: 4000 } }),
-  );
-  assert.ok(parsed.project.motion.speed <= 6);
-  assert.ok(parsed.project.motion.stagger >= 0);
-  assert.ok(parsed.project.typography.weight <= 900);
-});
-
-test("a colour that could escape a stylesheet is rejected", () => {
-  const parsed = parsePreset(
-    JSON.stringify({
-      schemaVersion: 2,
-      color: { mode: "custom", text: "red;} body{display:none", accent1: "url(http://x)" },
-    }),
-  );
-  assert.ok(!parsed.project.color.text.includes("}"));
-  assert.ok(!parsed.project.color.accent1.includes("url"));
-  // Legitimate colour syntax still gets through.
-  const ok = parsePreset(
-    JSON.stringify({ schemaVersion: 2, color: { text: "#ff00aa", accent1: "rgb(1 2 3 / 0.5)" } }),
-  );
-  assert.equal(ok.project.color.text, "#ff00aa");
-  assert.equal(ok.project.color.accent1, "rgb(1 2 3 / 0.5)");
-});
-
-test("a remote background image is dropped on import", () => {
-  const parsed = parsePreset(
-    JSON.stringify({ schemaVersion: 2, background: { mode: "image", imageUrl: "https://example.com/x.png" } }),
-  );
-  assert.equal(parsed.project.background.imageUrl, "");
-  assert.ok(parsed.warnings.some((w) => w.includes("background image")));
-
-  const inline = parsePreset(
-    JSON.stringify({ schemaVersion: 2, background: { mode: "image", imageUrl: "data:image/png;base64,AAAA" } }),
-  );
-  assert.ok(inline.project.background.imageUrl.startsWith("data:image/"));
-});
-
-test("input that is not a preset is reported, not swallowed", () => {
-  assert.throws(() => parsePreset("not json"), PresetError);
-  assert.throws(() => parsePreset("[1,2,3]"), PresetError);
-  assert.throws(() => parsePreset("42"), PresetError);
-});
-
-test("layer count is bounded", () => {
-  const many = { schemaVersion: 2, layers: Array.from({ length: 40 }, () => ({ text: "x" })) };
-  assert.ok(parsePreset(JSON.stringify(many)).project.layers.length <= 8);
-});
-
-/* ------------------------------------------------------------------ *
- * Built-in presets
- * ------------------------------------------------------------------ */
 
 test("every built-in preset is coherent and text-safe", () => {
   for (const preset of BUILTIN_PRESETS) {
@@ -256,7 +132,7 @@ test("hidden and empty layers are left out of every export", () => {
 });
 
 test("each export kind produces a plausible file", () => {
-  for (const kind of ["html", "react", "preset", "timeline"] as const) {
+  for (const kind of ["html", "react", "project", "timeline"] as const) {
     const file = generate(kind, project);
     assert.ok(file.body.length > 500, `${kind} is suspiciously short`);
     assert.ok(file.name.length > 0);
@@ -265,5 +141,5 @@ test("each export kind produces a plausible file", () => {
 
   assert.ok(generate("html", project).body.startsWith("<!doctype html>"));
   assert.ok(generate("react", project).body.startsWith('"use client"'));
-  assert.doesNotThrow(() => JSON.parse(generate("preset", project).body));
+  assert.doesNotThrow(() => JSON.parse(generate("project", project).body));
 });

@@ -1,6 +1,5 @@
 import { clampEdge, CUSTOM_FORMAT_ID, getCanvasFormat } from "@/lib/canvas-formats";
 import { GLYPH_POOLS } from "@/lib/glyphs";
-import { PALETTES } from "@/lib/palettes";
 import {
   DEFAULT_BACKGROUND,
   DEFAULT_CANVAS,
@@ -9,7 +8,6 @@ import {
   DEFAULT_PROJECT,
   DEFAULT_TYPOGRAPHY,
   RANGES,
-  SCHEMA_VERSION,
   createLayer,
 } from "@/lib/project";
 import { hasTemplate } from "@/lib/templates";
@@ -19,71 +17,36 @@ import type {
   ColorConfig,
   MotionConfig,
   PositionConfig,
-  ProjectState,
   TextLayer,
   TypographyConfig,
   WordStyle,
 } from "@/lib/types";
 
 /**
- * Preset serialisation, versioning and import validation.
+ * Defensive readers for untrusted JSON.
  *
- * Two rules shape this module. A preset written by an older build must still
- * open — hence `migrateV1`. And a malformed file must produce a message, never
- * a crash and never a half-applied project: every field is read defensively and
- * falls back to the default, collecting a warning as it goes.
+ * Every field a file can carry is read through one of these, and every one of
+ * them answers with something usable. A preset, a project file and a restored
+ * session are all documents a user can hand-edit, download from a stranger or
+ * leave in localStorage across an upgrade — so "throw" is never the answer for
+ * a field, only for input that is not a document at all.
+ *
+ * These used to live inside the preset parser. They are shared now because the
+ * project format reads exactly the same sections and would otherwise grow a
+ * second, drifting copy of the same clamps.
  *
  * Every numeric clamp is the control's own range rather than a second, wider
- * opinion about it. A file carrying a value no slider can reach used to import
- * intact and leave that control pinned at its end stop, describing a project it
- * did not have.
+ * opinion about it: a file carrying a value no slider can reach would otherwise
+ * import intact and leave that control pinned at its end stop, describing a
+ * project it does not have.
  */
 
-export const PRESET_SCHEMA_ID = `semantic-text-animator/preset@${SCHEMA_VERSION}`;
+export type Bag = Record<string, unknown>;
 
-export class PresetError extends Error {}
-
-export type PresetPayload = {
-  $schema: string;
-  schemaVersion: number;
-  name: string;
-  /** Kept separate: importing a look must never silently replace the phrase. */
-  text: { layers: { name: string; text: string }[] };
-  canvas: CanvasConfig;
-  typography: TypographyConfig;
-  motion: MotionConfig;
-  color: ColorConfig;
-  background: BackgroundConfig;
-  paletteId: string;
-  invertCanvas: boolean;
-  gradientDigits: boolean;
-  layers: Omit<TextLayer, "text" | "name" | "id">[];
-};
-
-export type ParsedPreset = {
-  name: string;
-  /** Everything except the phrases. */
-  project: Omit<ProjectState, "layers" | "activeLayerId"> & {
-    layers: TextLayer[];
-    activeLayerId: string;
-  };
-  /** The phrases the file carried, offered as an explicit opt-in. */
-  texts: string[];
-  warnings: string[];
-  /** The schema the file was written against. */
-  sourceVersion: number;
-};
-
-/* ------------------------------------------------------------------ *
- * Readers
- * ------------------------------------------------------------------ */
-
-type Bag = Record<string, unknown>;
-
-const isBag = (value: unknown): value is Bag =>
+export const isBag = (value: unknown): value is Bag =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-function num(
+export function num(
   source: Bag,
   key: string,
   fallback: number,
@@ -95,17 +58,17 @@ function num(
   return Math.min(range.max, Math.max(range.min, value));
 }
 
-function bool(source: Bag, key: string, fallback: boolean): boolean {
+export function bool(source: Bag, key: string, fallback: boolean): boolean {
   const value = source[key];
   return typeof value === "boolean" ? value : fallback;
 }
 
-function str(source: Bag, key: string, fallback: string): string {
+export function str(source: Bag, key: string, fallback: string): string {
   const value = source[key];
   return typeof value === "string" && value.length > 0 ? value : fallback;
 }
 
-function oneOf<T extends string>(
+export function oneOf<T extends string>(
   source: Bag,
   key: string,
   allowed: readonly T[],
@@ -118,7 +81,7 @@ function oneOf<T extends string>(
 }
 
 /** A CSS colour we are willing to write into a stylesheet. */
-function colour(source: Bag, key: string, fallback: string): string {
+export function colour(source: Bag, key: string, fallback: string): string {
   const value = source[key];
   if (typeof value !== "string") return fallback;
   const trimmed = value.trim();
@@ -131,7 +94,7 @@ function colour(source: Bag, key: string, fallback: string): string {
   return fallback;
 }
 
-function bagAt(source: Bag, key: string): Bag {
+export function bagAt(source: Bag, key: string): Bag {
   const value = source[key];
   return isBag(value) ? value : {};
 }
@@ -140,7 +103,7 @@ function bagAt(source: Bag, key: string): Bag {
  * Section readers
  * ------------------------------------------------------------------ */
 
-function readCanvas(source: Bag, warnings: string[]): CanvasConfig {
+export function readCanvas(source: Bag, warnings: string[]): CanvasConfig {
   const formatId = str(source, "formatId", DEFAULT_CANVAS.formatId);
   const known = getCanvasFormat(formatId);
   const width = clampEdge(num(source, "width", DEFAULT_CANVAS.width));
@@ -158,7 +121,7 @@ function readCanvas(source: Bag, warnings: string[]): CanvasConfig {
   };
 }
 
-function readTypography(source: Bag): TypographyConfig {
+export function readTypography(source: Bag): TypographyConfig {
   return {
     // Font ids are resolved leniently downstream, so an unknown face degrades
     // to the default rather than failing the import.
@@ -184,7 +147,7 @@ function readTypography(source: Bag): TypographyConfig {
   };
 }
 
-function readMotion(source: Bag): MotionConfig {
+export function readMotion(source: Bag): MotionConfig {
   return {
     speed: num(source, "speed", DEFAULT_MOTION.speed, RANGES.speed),
     stagger: num(source, "stagger", DEFAULT_MOTION.stagger, RANGES.stagger),
@@ -200,7 +163,7 @@ function readMotion(source: Bag): MotionConfig {
   };
 }
 
-function readColor(source: Bag): ColorConfig {
+export function readColor(source: Bag): ColorConfig {
   return {
     mode: oneOf(source, "mode", ["palette", "custom"] as const, DEFAULT_COLOR.mode),
     text: colour(source, "text", DEFAULT_COLOR.text),
@@ -219,7 +182,7 @@ function readColor(source: Bag): ColorConfig {
   };
 }
 
-function readBackground(source: Bag, warnings: string[]): BackgroundConfig {
+export function readBackground(source: Bag, warnings: string[]): BackgroundConfig {
   const imageUrl = str(source, "imageUrl", "");
   // A remote URL in an imported preset would fetch on the user's behalf the
   // moment the project renders, so only inline data is carried across.
@@ -250,7 +213,7 @@ function readBackground(source: Bag, warnings: string[]): BackgroundConfig {
   };
 }
 
-function readPosition(source: Bag): PositionConfig {
+export function readPosition(source: Bag): PositionConfig {
   return {
     anchor: oneOf(
       source,
@@ -267,7 +230,7 @@ function readPosition(source: Bag): PositionConfig {
   };
 }
 
-function readWordStyles(value: unknown): Record<number, WordStyle> {
+export function readWordStyles(value: unknown): Record<number, WordStyle> {
   if (!isBag(value)) return {};
   const out: Record<number, WordStyle> = {};
 
@@ -293,7 +256,7 @@ function readWordStyles(value: unknown): Record<number, WordStyle> {
   return out;
 }
 
-function readLayer(value: unknown, index: number, warnings: string[]): TextLayer {
+export function readLayer(value: unknown, index: number, warnings: string[]): TextLayer {
   const source = isBag(value) ? value : {};
   const templateId = str(source, "templateId", DEFAULT_PROJECT.layers[0].templateId);
 
@@ -316,7 +279,7 @@ function readLayer(value: unknown, index: number, warnings: string[]): TextLayer
   });
 }
 
-function readLayerTypography(source: Bag): TextLayer["typography"] {
+export function readLayerTypography(source: Bag): TextLayer["typography"] {
   const out: TextLayer["typography"] = {};
   if (typeof source.fontId === "string") out.fontId = source.fontId;
   if (typeof source.weight === "number") out.weight = num(source, "weight", 600, RANGES.weight);
@@ -330,188 +293,4 @@ function readLayerTypography(source: Bag): TextLayer["typography"] {
     out.align = oneOf(source, "align", ["left", "center", "right"] as const, "center");
   }
   return out;
-}
-
-/* ------------------------------------------------------------------ *
- * v1 migration
- * ------------------------------------------------------------------ */
-
-/**
- * Reshapes a v1 preset into the v2 field layout.
- *
- * v1 was a flat settings dump with `type`/`motion` sub-objects and a `canvas`
- * that was a light/dark *string*. Everything it could express still exists, so
- * the migration is total — no v1 file loses information opening in v2.
- */
-function migrateV1(source: Bag): Bag {
-  const type = bagAt(source, "type");
-  const motion = bagAt(source, "motion");
-  const invert = source.canvas === "dark";
-
-  return {
-    schemaVersion: 2,
-    name: typeof source.phrase === "string" ? source.phrase : "Imported preset",
-    paletteId: source.palette,
-    invertCanvas: invert,
-    gradientDigits: true,
-    canvas: { ...DEFAULT_CANVAS },
-    typography: {
-      ...DEFAULT_TYPOGRAPHY,
-      fontSize: type.fontSize,
-      tracking: type.tracking,
-      leading: type.leading,
-      weight: type.weight,
-    },
-    motion: {
-      ...DEFAULT_MOTION,
-      speed: motion.speed,
-      stagger: motion.stagger,
-      loop: motion.loop,
-    },
-    color: { ...DEFAULT_COLOR },
-    background: {
-      ...DEFAULT_BACKGROUND,
-      // v1 had no background system; the palette canvas tone was the whole of
-      // it, and that is what `invertCanvas` still selects.
-      mode: "solid",
-      color: DEFAULT_BACKGROUND.color,
-    },
-    layers: [
-      {
-        name: "Headline",
-        text: source.phrase,
-        templateId: source.template,
-        glyphPool: source.glyphPool,
-        delay: 0,
-        position: { anchor: "center", x: 0, y: 0 },
-        typography: {},
-        wordStyles: {},
-        visible: true,
-      },
-    ],
-  };
-}
-
-/* ------------------------------------------------------------------ *
- * Public API
- * ------------------------------------------------------------------ */
-
-export function detectVersion(source: Bag): number {
-  if (typeof source.schemaVersion === "number") return source.schemaVersion;
-  const schema = source.$schema;
-  if (typeof schema === "string") {
-    const match = /@(\d+)$/.exec(schema);
-    if (match) return Number(match[1]);
-  }
-  // The very first build wrote no version marker at all.
-  return "phrase" in source ? 1 : SCHEMA_VERSION;
-}
-
-/**
- * Parses preset JSON into a project.
- *
- * Throws only for input that is not a preset at all. Everything else — unknown
- * template, missing section, out-of-range number, a field from a future build —
- * is absorbed, reported as a warning, and left at the default.
- */
-export function parsePreset(raw: string): ParsedPreset {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new PresetError("That file is not valid JSON.");
-  }
-
-  if (!isBag(parsed)) {
-    throw new PresetError("A preset must be a JSON object.");
-  }
-
-  const warnings: string[] = [];
-  const sourceVersion = detectVersion(parsed);
-
-  if (sourceVersion > SCHEMA_VERSION) {
-    warnings.push(
-      `This preset was written by a newer version (schema ${sourceVersion}). Unknown settings were ignored.`,
-    );
-  }
-
-  const source = sourceVersion <= 1 ? migrateV1(parsed) : parsed;
-  if (sourceVersion <= 1) warnings.push("Upgraded a version 1 preset to the current schema.");
-
-  const rawLayers = Array.isArray(source.layers) ? source.layers : [];
-  if (rawLayers.length === 0) {
-    warnings.push("The preset contained no text layer — kept your current text.");
-  }
-
-  const layers = (rawLayers.length ? rawLayers : [{}]).slice(0, 8).map((layer, index) =>
-    readLayer(layer, index, warnings),
-  );
-
-  const paletteIds = PALETTES.map((palette) => palette.id);
-  const semantic = bagAt(source, "semantic");
-
-  const project: ParsedPreset["project"] = {
-    schemaVersion: SCHEMA_VERSION,
-    name: str(source, "name", "Imported preset"),
-    canvas: readCanvas(bagAt(source, "canvas"), warnings),
-    typography: readTypography(bagAt(source, "typography")),
-    motion: readMotion(bagAt(source, "motion")),
-    color: readColor(bagAt(source, "color")),
-    background: readBackground(bagAt(source, "background"), warnings),
-    paletteId: oneOf(source, "paletteId", paletteIds, "agent"),
-    invertCanvas: bool(source, "invertCanvas", false),
-    layers,
-    activeLayerId: layers[0].id,
-    semantic: {
-      enabled: bool(semantic, "enabled", true),
-      autoApply: bool(semantic, "autoApply", false),
-    },
-    gradientDigits: bool(source, "gradientDigits", true),
-    reducePreviewMotion: false,
-  };
-
-  return {
-    name: project.name,
-    project,
-    texts: layers.map((layer) => layer.text),
-    warnings,
-    sourceVersion,
-  };
-}
-
-/** Serialises a project as a shareable preset. */
-export function presetPayload(project: ProjectState): PresetPayload {
-  return {
-    $schema: PRESET_SCHEMA_ID,
-    schemaVersion: SCHEMA_VERSION,
-    name: project.name,
-    text: {
-      layers: project.layers.map((layer) => ({ name: layer.name, text: layer.text })),
-    },
-    canvas: project.canvas,
-    typography: project.typography,
-    motion: project.motion,
-    color: project.color,
-    background: project.background,
-    paletteId: project.paletteId,
-    invertCanvas: project.invertCanvas,
-    gradientDigits: project.gradientDigits,
-    layers: project.layers.map(({ ...layer }) => ({
-      templateId: layer.templateId,
-      glyphPool: layer.glyphPool,
-      delay: layer.delay,
-      position: layer.position,
-      typography: layer.typography,
-      wordStyles: layer.wordStyles,
-      visible: layer.visible,
-      // Text rides along so a preset can carry a phrase, but the importer only
-      // applies it when the user asks for it.
-      text: layer.text,
-      name: layer.name,
-    })) as unknown as PresetPayload["layers"],
-  };
-}
-
-export function presetJson(project: ProjectState): string {
-  return `${JSON.stringify(presetPayload(project), null, 2)}\n`;
 }

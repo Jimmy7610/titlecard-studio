@@ -21,7 +21,13 @@ import {
   standaloneHtml,
   timelineSource,
 } from "../lib/export";
-import { presetJson, parsePreset } from "../lib/presets/schema";
+import {
+  parseProjectFile,
+  parseStylePreset,
+  projectFileJson,
+  stylePresetFromProject,
+  stylePresetJson,
+} from "../lib/persistence";
 import { DEFAULT_PROJECT } from "../lib/project";
 import { TEMPLATES } from "../lib/templates";
 import type { ProjectState } from "../lib/types";
@@ -133,18 +139,29 @@ for (const template of TEMPLATES) {
       check(`${template.id}/html: generated JS does not parse`, false, String(error));
     }
 
-    // Round-trip: a preset must survive being written and read back.
-    const json = presetJson(project);
-    const reimported = parsePreset(json);
+    // Round-trip: a project file must survive being written and read back.
+    const reopened = parseProjectFile(projectFileJson(project)).project;
     check(
-      `${template.id}/preset: template lost in round-trip`,
-      reimported.project.layers[0].templateId === template.id,
-      `${reimported.project.layers[0].templateId}`,
+      `${template.id}/project: template lost in round-trip`,
+      reopened.layers[0].templateId === template.id,
+      `${reopened.layers[0].templateId}`,
     );
     check(
-      `${template.id}/preset: phrase lost in round-trip`,
-      reimported.texts[0] === phrase,
-      `${reimported.texts[0]}`,
+      `${template.id}/project: phrase lost in round-trip`,
+      reopened.layers[0].text === phrase,
+      `${reopened.layers[0].text}`,
+    );
+
+    // A look must carry the style and none of the words.
+    const look = stylePresetJson(stylePresetFromProject(project, "look"));
+    check(
+      `${template.id}/look: template lost in round-trip`,
+      parseStylePreset(look).preset.templateId === template.id,
+    );
+    check(
+      `${template.id}/look: leaked the phrase`,
+      !look.includes(phrase.split(" ")[0]),
+      "a style preset must not carry text",
     );
   }
 }
@@ -164,44 +181,51 @@ const V1_PRESET = JSON.stringify({
   canvas: "dark",
 });
 
-const migrated = parsePreset(V1_PRESET);
+const migrated = parseProjectFile(V1_PRESET);
 check("v1 migration: template", migrated.project.layers[0].templateId === "agent-reveal");
 check("v1 migration: palette", migrated.project.paletteId === "terminal");
 check("v1 migration: dark canvas", migrated.project.invertCanvas === true);
 check("v1 migration: speed", migrated.project.motion.speed === 1.4);
 check("v1 migration: weight", migrated.project.typography.weight === 700);
-check("v1 migration: phrase offered", migrated.texts[0] === "Agent 3");
+check("v1 migration: phrase kept", migrated.project.layers[0].text === "Agent 3");
 check("v1 migration: reports the upgrade", migrated.warnings.length > 0);
+check("v1 look: phrase offered separately", parseStylePreset(V1_PRESET).texts[0] === "Agent 3");
 
 for (const [label, raw] of [
-  ["unknown template", '{"schemaVersion":2,"layers":[{"templateId":"nope","text":"hi"}]}'],
-  ["missing sections", '{"schemaVersion":2}'],
+  ["unknown template", '{"schemaVersion":3,"layers":[{"templateId":"nope","text":"hi"}]}'],
+  ["missing sections", '{"schemaVersion":3}'],
   ["future schema", '{"schemaVersion":99,"layers":[{"text":"hi"}]}'],
-  ["hostile colour", '{"schemaVersion":2,"color":{"mode":"custom","text":"red;} body{display:none"}}'],
+  ["v2 shape", '{"schemaVersion":2,"text":{"layers":[{"text":"hi"}]},"layers":[{"text":"hi"}]}'],
+  ["hostile colour", '{"schemaVersion":3,"color":{"mode":"custom","text":"red;} body{display:none"}}'],
 ] as const) {
   try {
-    const parsed = parsePreset(raw);
-    check(`malformed preset (${label}) still yields a project`, parsed.project.layers.length > 0);
+    const parsed = parseProjectFile(raw);
+    check(`malformed project (${label}) still yields a project`, parsed.project.layers.length > 0);
   } catch (error) {
-    check(`malformed preset (${label}) must not throw`, false, String(error));
+    check(`malformed project (${label}) must not throw`, false, String(error));
   }
 }
 
 check(
   "hostile colour is rejected rather than sanitised",
-  !parsePreset(
-    '{"schemaVersion":2,"color":{"mode":"custom","text":"red;} body{display:none"}}',
+  !parseProjectFile(
+    '{"schemaVersion":3,"color":{"mode":"custom","text":"red;} body{display:none"}}',
   ).project.color.text.includes("}"),
 );
 
 for (const raw of ["not json at all", "[1,2,3]"]) {
-  let threw = false;
-  try {
-    parsePreset(raw);
-  } catch {
-    threw = true;
+  for (const [label, parse] of [
+    ["project", parseProjectFile],
+    ["look", parseStylePreset],
+  ] as const) {
+    let threw = false;
+    try {
+      parse(raw);
+    } catch {
+      threw = true;
+    }
+    check(`invalid ${label} input "${raw}" must be reported`, threw);
   }
-  check(`invalid input "${raw}" must be reported`, threw);
 }
 
 /* ------------------------------------------------------------------ *

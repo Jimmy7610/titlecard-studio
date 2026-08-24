@@ -16,10 +16,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useClientState } from "@/hooks/use-client-value";
 import type { ProjectController } from "@/hooks/use-project";
-import { downloadFile, generate } from "@/lib/export";
+import { downloadFile } from "@/lib/export";
 import { getPalette, gradientOf } from "@/lib/palettes";
 import { BUILTIN_PRESETS, applyPreset } from "@/lib/presets/builtin";
-import { PresetError, parsePreset, type ParsedPreset } from "@/lib/presets/schema";
+import {
+  PersistenceError,
+  applyStylePreset,
+  looksLikeProject,
+  parseProjectFile,
+  parseStylePreset,
+  projectFileJson,
+  projectFileName,
+  stylePresetFromProject,
+  stylePresetJson,
+  STYLE_PRESET_EXTENSION,
+} from "@/lib/persistence";
 import {
   deletePreset,
   duplicatePreset,
@@ -30,7 +41,6 @@ import {
   type SavedPreset,
 } from "@/lib/storage";
 import { getTemplate } from "@/lib/templates";
-import type { ProjectState } from "@/lib/types";
 
 /**
  * Presets.
@@ -41,38 +51,6 @@ import type { ProjectState } from "@/lib/types";
  */
 /** Stable empty array — a fresh literal would re-render on every pass. */
 const EMPTY_SAVED: SavedPreset[] = [];
-
-/**
- * Wraps a preset's look around the phrases already on screen.
- *
- * A preset that describes more layers than the project has used to lose them
- * silently, so reopening a saved three-layer piece gave you one layer. The
- * missing ones are created here with the look applied and no text — their
- * phrases are offered through the same explicit opt-in as everything else.
- */
-function withPresetLook(previous: ProjectState, parsed: ParsedPreset): ProjectState {
-  const merged = parsed.project.layers.map((source, index) => {
-    const existing = previous.layers[index];
-    if (!existing) return { ...source, text: "" };
-    return {
-      ...existing,
-      templateId: source.templateId,
-      glyphPool: source.glyphPool,
-      delay: source.delay,
-      position: source.position,
-      typography: source.typography,
-      wordStyles: source.wordStyles,
-    };
-  });
-
-  // Layers the preset says nothing about keep everything they had.
-  const layers = [...merged, ...previous.layers.slice(parsed.project.layers.length)];
-  const activeLayerId = layers.some((layer) => layer.id === previous.activeLayerId)
-    ? previous.activeLayerId
-    : layers[0].id;
-
-  return { ...parsed.project, layers, activeLayerId };
-}
 
 export function PresetsPanel({ controller }: { controller: ProjectController }) {
   const { project, update } = controller;
@@ -85,28 +63,66 @@ export function PresetsPanel({ controller }: { controller: ProjectController }) 
 
   const activeTemplateId = controller.layer.templateId;
 
+  /**
+   * Opens a project file: the whole document, replacing what was on screen.
+   *
+   * The confirmation is the difference between the two formats made visible. A
+   * look is additive and needs no permission; a project is a replacement and
+   * does.
+   */
+  const openProject = async (file: File) => {
+    const raw = await file.text();
+    const parsed = parseProjectFile(raw);
+
+    const layerCount = parsed.project.layers.length;
+    const confirmed =
+      typeof window === "undefined" ||
+      window.confirm(
+        `Open "${parsed.project.name}"? It has ${layerCount} layer${layerCount === 1 ? "" : "s"} and will replace what is on the canvas.`,
+      );
+    if (!confirmed) return;
+
+    update(() => parsed.project, { tag: "open-project" });
+    setOfferedTexts(null);
+    toast.success(`Opened "${parsed.project.name}"`, {
+      description: parsed.warnings[0] ?? "The whole project was restored.",
+    });
+    for (const warning of parsed.warnings.slice(1)) toast.warning(warning);
+  };
+
+  /** Applies a look, leaving every word and the canvas exactly where they are. */
+  const importLook = async (file: File) => {
+    const raw = await file.text();
+    const parsed = parseStylePreset(raw);
+
+    update((previous) => applyStylePreset(previous, parsed.preset), { tag: "import" });
+
+    const carriesText = parsed.texts.some((text) => text.trim().length > 0);
+    setOfferedTexts(carriesText ? parsed.texts : null);
+
+    toast.success(`Applied "${parsed.preset.name}"`, {
+      description: parsed.warnings[0] ?? "Your text and canvas were kept.",
+    });
+    for (const warning of parsed.warnings.slice(1)) toast.warning(warning);
+  };
+
   const handleImport = async (file: File | undefined) => {
     if (!file) return;
 
     try {
       const raw = await file.text();
-      const parsed = parsePreset(raw);
+      // One file input, two formats. The file says which it is; guessing from
+      // the extension would misread a renamed download.
+      const parsed: unknown = JSON.parse(raw);
+      const isProject =
+        typeof parsed === "object" && parsed !== null && looksLikeProject(parsed as never);
 
-      update((previous) => withPresetLook(previous, parsed), { tag: "import" });
-
-      const carriesText = parsed.texts.some((text) => text.trim().length > 0);
-      setOfferedTexts(carriesText ? parsed.texts : null);
-
-      toast.success(`Imported "${parsed.name}"`, {
-        description: parsed.warnings.length
-          ? parsed.warnings[0]
-          : "Your text was kept — only the look changed.",
-      });
-      for (const warning of parsed.warnings.slice(1)) toast.warning(warning);
+      if (isProject) await openProject(file);
+      else await importLook(file);
     } catch (error) {
-      toast.error("Could not read that preset", {
+      toast.error("Could not read that file", {
         description:
-          error instanceof PresetError ? error.message : "The file could not be opened.",
+          error instanceof PersistenceError ? error.message : "The file could not be opened.",
       });
     } finally {
       if (fileInput.current) fileInput.current.value = "";
@@ -135,27 +151,29 @@ export function PresetsPanel({ controller }: { controller: ProjectController }) 
 
   const handleSave = () => {
     const label = name.trim() || `${getTemplate(activeTemplateId).name} look`;
-    setSaved(savePreset(label, project));
+    setSaved(savePreset(label, stylePresetFromProject(project, label)));
     setName("");
-    toast.success(`Saved "${label}"`, { description: "Stored in this browser." });
+    toast.success(`Saved "${label}"`, {
+      description: "The look only — your words stay where they are.",
+    });
   };
 
   const applySaved = (preset: SavedPreset) => {
     try {
       const parsed = readSavedPreset(preset);
-      update((previous) => withPresetLook(previous, parsed), { tag: `saved-${preset.id}` });
-
-      // A saved preset carries the phrase it was saved with. Offering it is
-      // what makes "reopen a finished piece" true, without a style preset ever
-      // overwriting the words on its own.
+      update((previous) => applyStylePreset(previous, parsed.preset), {
+        tag: `saved-${preset.id}`,
+      });
+      // A look saved in an older build may still carry the phrase it was saved
+      // with. It is offered, never applied.
       const carriesText = parsed.texts.some((text) => text.trim().length > 0);
       setOfferedTexts(carriesText ? parsed.texts : null);
 
       toast.success(`Applied "${preset.name}"`, {
-        description: carriesText ? "Its text is offered below." : undefined,
+        description: carriesText ? "Its text is offered below." : "Your words were kept.",
       });
     } catch {
-      toast.error("That saved preset could not be read", {
+      toast.error("That saved look could not be read", {
         description: "It may have been written by an incompatible build.",
       });
     }
@@ -307,8 +325,13 @@ export function PresetsPanel({ controller }: { controller: ProjectController }) 
       </section>
 
       {/* ------------------------------------------------------- Files */}
-      <section className="space-y-2 border-t border-border pt-4">
-        <SectionLabel>Files</SectionLabel>
+      <section className="space-y-3 border-t border-border pt-4">
+        <div className="space-y-0.5">
+          <SectionLabel>Files</SectionLabel>
+          <p className="text-[0.7rem] text-muted-foreground/70">
+            A project is the whole document. A look is only the style.
+          </p>
+        </div>
 
         <input
           ref={fileInput}
@@ -318,28 +341,52 @@ export function PresetsPanel({ controller }: { controller: ProjectController }) 
           onChange={(event) => void handleImport(event.target.files?.[0])}
         />
 
-        <div className="grid grid-cols-2 gap-1.5">
+        <div className="space-y-1.5">
+          <div className="grid grid-cols-2 gap-1.5">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                downloadFile(
+                  projectFileName(project),
+                  projectFileJson(project),
+                  "application/json",
+                );
+                toast.success("Project saved", { description: projectFileName(project) });
+              }}
+            >
+              <DownloadIcon data-icon="inline-start" />
+              Save project
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => fileInput.current?.click()}
+            >
+              <UploadIcon data-icon="inline-start" />
+              Open file
+            </Button>
+          </div>
+
           <Button
             type="button"
-            variant="outline"
+            variant="ghost"
             size="sm"
+            className="w-full"
             onClick={() => {
-              const file = generate("preset", project);
-              downloadFile(file.name, file.body, file.mime);
-              toast.success("Preset exported", { description: file.name });
+              const label = project.name || "Untitled";
+              downloadFile(
+                `${label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "look"}${STYLE_PRESET_EXTENSION}`,
+                stylePresetJson(stylePresetFromProject(project, label)),
+                "application/json",
+              );
+              toast.success("Look exported", { description: "Style only, no text." });
             }}
           >
             <DownloadIcon data-icon="inline-start" />
-            Export JSON
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => fileInput.current?.click()}
-          >
-            <UploadIcon data-icon="inline-start" />
-            Import JSON
+            Export this look
           </Button>
         </div>
 
@@ -349,7 +396,7 @@ export function PresetsPanel({ controller }: { controller: ProjectController }) 
             className="space-y-2 rounded-lg border border-primary/25 bg-primary/5 p-2.5"
           >
             <p className="text-[0.7rem] leading-relaxed">
-              That preset also carried text:{" "}
+              That look also carried text:{" "}
               <span className="font-medium text-foreground">
                 {offeredTexts.filter(Boolean).join(" / ")}
               </span>
@@ -371,9 +418,12 @@ export function PresetsPanel({ controller }: { controller: ProjectController }) 
         ) : null}
 
         <InfoNote>
-          Presets are versioned. Files written by version 1 of this app are migrated on
-          import rather than rejected, and a field from a newer build is ignored instead of
-          throwing.
+          <strong className="font-medium text-foreground">Save project</strong> writes every
+          layer, phrase, position and word style as{" "}
+          <code className="font-mono">.titlecard.json</code>. Opening one replaces the canvas.{" "}
+          <strong className="font-medium text-foreground">Export this look</strong> writes the
+          palette, type, motion and background only — applying it to someone else&apos;s work
+          cannot take their words away. Both formats read files written by versions 1 and 2.
         </InfoNote>
       </section>
 

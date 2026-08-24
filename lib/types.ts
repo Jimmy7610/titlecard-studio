@@ -181,7 +181,7 @@ export type SemanticConfig = {
 };
 
 export type ProjectState = {
-  schemaVersion: 2;
+  schemaVersion: 3;
   name: string;
   canvas: CanvasConfig;
   typography: TypographyConfig;

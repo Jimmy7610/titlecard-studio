@@ -1,22 +1,40 @@
 "use client";
 
-import { parsePreset, presetPayload } from "@/lib/presets/schema";
+import {
+  parseProjectFile,
+  parseStylePreset,
+  projectFileJson,
+  stylePresetJson,
+  type StylePreset,
+} from "@/lib/persistence";
 import { DEFAULT_PROJECT, SCHEMA_VERSION } from "@/lib/project";
 import type { ProjectState } from "@/lib/types";
 
 /**
  * Local persistence.
  *
- * Two stores, both `localStorage`, both versioned by key: the session (one
- * project, rewritten as you work) and the saved presets (a list). Reads are
- * total — a corrupted or half-written entry returns the default rather than
- * throwing, because a bad byte in storage must not be able to make the editor
- * unopenable.
+ * Two stores, both `localStorage`: the session (one project, rewritten as you
+ * work) and the saved looks (a list). Reads are total — a corrupted or
+ * half-written entry returns the default rather than throwing, because a bad
+ * byte in storage must not be able to make the editor unopenable.
+ *
+ * Keys are versioned, and every reader walks *back* through the versions it
+ * knows. A key that only looked at the current version would silently abandon
+ * a project the moment the schema moved: the old entry is still sitting there,
+ * still readable, and the user would open the app to an empty canvas.
  */
 
 const SESSION_KEY = `stw:session:v${SCHEMA_VERSION}`;
 const PRESETS_KEY = `stw:presets:v${SCHEMA_VERSION}`;
 const ONBOARDING_KEY = "stw:onboarding-dismissed:v1";
+
+/**
+ * Every session key this build can read, newest first.
+ *
+ * Adding a version means adding its key here, not just bumping the constant.
+ */
+const SESSION_KEYS = [SESSION_KEY, "stw:session:v2"] as const;
+const PRESET_KEYS = [PRESETS_KEY, "stw:presets:v2"] as const;
 
 function readRaw(key: string): string | null {
   if (typeof window === "undefined") return null;
@@ -46,53 +64,66 @@ function removeRaw(key: string): void {
   }
 }
 
+/** The first key that holds something, and what it held. */
+function findStored(keys: readonly string[]): { key: string; raw: string } | null {
+  for (const key of keys) {
+    const raw = readRaw(key);
+    if (raw) return { key, raw };
+  }
+  return null;
+}
+
 /* ------------------------------------------------------------------ *
  * Session
  * ------------------------------------------------------------------ */
+
+export type RestoredSession = {
+  project: ProjectState;
+  /** True when the project came back from a previous session. */
+  restored: boolean;
+  /** True when it had to be migrated from an older schema on the way in. */
+  migrated: boolean;
+};
 
 /**
  * Restores the last session.
  *
  * The stored blob goes through the same validator an imported file does, so a
  * project written by an older build — or hand-edited in devtools — is migrated
- * and clamped rather than trusted.
+ * and clamped rather than trusted. A successful migration is written forward
+ * immediately, and only then is the old copy dropped: a crash in between leaves
+ * the original where it was rather than losing it.
  */
-export function loadSession(): { project: ProjectState; restored: boolean } {
-  const raw = readRaw(SESSION_KEY);
-  if (!raw) return { project: DEFAULT_PROJECT, restored: false };
+export function loadSession(): RestoredSession {
+  const found = findStored(SESSION_KEYS);
+  if (!found) return { project: DEFAULT_PROJECT, restored: false, migrated: false };
 
   try {
-    const parsed = parsePreset(raw);
-    const layers = parsed.project.layers.map((layer, index) => ({
-      ...layer,
-      // A session *does* carry its phrases; only imported presets hold them back.
-      text: parsed.texts[index] ?? layer.text,
-    }));
+    const parsed = parseProjectFile(found.raw);
+    const migrated = found.key !== SESSION_KEY;
 
-    return {
-      project: {
-        ...parsed.project,
-        layers: layers.length ? layers : DEFAULT_PROJECT.layers,
-        activeLayerId: layers[0]?.id ?? DEFAULT_PROJECT.activeLayerId,
-      },
-      restored: true,
-    };
+    if (migrated) {
+      // Write forward first, drop the old copy second.
+      if (writeRaw(SESSION_KEY, projectFileJson(parsed.project))) removeRaw(found.key);
+    }
+
+    return { project: parsed.project, restored: true, migrated };
   } catch {
-    removeRaw(SESSION_KEY);
-    return { project: DEFAULT_PROJECT, restored: false };
+    removeRaw(found.key);
+    return { project: DEFAULT_PROJECT, restored: false, migrated: false };
   }
 }
 
 export function saveSession(project: ProjectState): void {
-  writeRaw(SESSION_KEY, JSON.stringify(presetPayload(project)));
+  writeRaw(SESSION_KEY, projectFileJson(project));
 }
 
 export function clearSession(): void {
-  removeRaw(SESSION_KEY);
+  for (const key of SESSION_KEYS) removeRaw(key);
 }
 
 /* ------------------------------------------------------------------ *
- * Saved presets
+ * Saved looks
  * ------------------------------------------------------------------ */
 
 export type SavedPreset = {
@@ -100,26 +131,42 @@ export type SavedPreset = {
   name: string;
   /** Epoch millis, for ordering. */
   savedAt: number;
-  /** A full preset payload, serialised. */
+  /** A serialised `StylePresetFile`. */
   payload: string;
 };
 
+const isSavedPreset = (entry: unknown): entry is SavedPreset =>
+  typeof entry === "object" &&
+  entry !== null &&
+  typeof (entry as SavedPreset).id === "string" &&
+  typeof (entry as SavedPreset).payload === "string";
+
 export function listSavedPresets(): SavedPreset[] {
-  const raw = readRaw(PRESETS_KEY);
-  if (!raw) return [];
+  const found = findStored(PRESET_KEYS);
+  if (!found) return [];
 
   try {
-    const parsed: unknown = JSON.parse(raw);
+    const parsed: unknown = JSON.parse(found.raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (entry): entry is SavedPreset =>
-        typeof entry === "object" &&
-        entry !== null &&
-        typeof (entry as SavedPreset).id === "string" &&
-        typeof (entry as SavedPreset).payload === "string",
-    );
+    const presets = parsed.filter(isSavedPreset);
+
+    // Entries saved under an older key are re-parsed through the current
+    // reader and written forward, so a look saved in v2 keeps working.
+    if (found.key !== PRESETS_KEY && presets.length) {
+      const upgraded = presets.map((preset) => {
+        try {
+          return { ...preset, payload: stylePresetJson(parseStylePreset(preset.payload).preset) };
+        } catch {
+          return preset;
+        }
+      });
+      if (writeRaw(PRESETS_KEY, JSON.stringify(upgraded))) removeRaw(found.key);
+      return upgraded;
+    }
+
+    return presets;
   } catch {
-    removeRaw(PRESETS_KEY);
+    removeRaw(found.key);
     return [];
   }
 }
@@ -128,16 +175,19 @@ function writePresets(presets: SavedPreset[]): boolean {
   return writeRaw(PRESETS_KEY, JSON.stringify(presets));
 }
 
-export function savePreset(name: string, project: ProjectState): SavedPreset[] {
-  const presets = listSavedPresets();
+const newId = () =>
+  `saved-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+
+export function savePreset(name: string, preset: StylePreset): SavedPreset[] {
+  const label = name.trim() || "Untitled look";
   const entry: SavedPreset = {
-    id: `saved-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`,
-    name: name.trim() || "Untitled preset",
+    id: newId(),
+    name: label,
     savedAt: Date.now(),
-    payload: JSON.stringify({ ...presetPayload(project), name: name.trim() || "Untitled preset" }),
+    payload: stylePresetJson({ ...preset, name: label }),
   };
 
-  const next = [entry, ...presets];
+  const next = [entry, ...listSavedPresets()];
   writePresets(next);
   return next;
 }
@@ -157,7 +207,7 @@ export function duplicatePreset(id: string): SavedPreset[] {
 
   const copy: SavedPreset = {
     ...source,
-    id: `saved-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`,
+    id: newId(),
     name: `${source.name} copy`,
     savedAt: Date.now(),
   };
@@ -173,9 +223,9 @@ export function deletePreset(id: string): SavedPreset[] {
   return next;
 }
 
-/** Reads a saved preset back into a project, keeping the current phrases. */
+/** Reads a saved look back. Throws only if the payload is not a look at all. */
 export function readSavedPreset(preset: SavedPreset) {
-  return parsePreset(preset.payload);
+  return parseStylePreset(preset.payload);
 }
 
 /* ------------------------------------------------------------------ *

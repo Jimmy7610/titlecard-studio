@@ -11,7 +11,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { buildExportModel, reactComponent, standaloneHtml, timelineSource } from "../lib/export";
-import { presetJson } from "../lib/presets/schema";
+import { projectFileJson } from "../lib/persistence";
 import { DEFAULT_PROJECT } from "../lib/project";
 import type { ProjectState } from "../lib/types";
 
@@ -121,7 +121,11 @@ for (const sample of SAMPLES) {
   writeFileSync(join(outDir, `${sample.name}.html`), standaloneHtml(model), "utf8");
   writeFileSync(join(outDir, `${sample.name}.tsx`), reactComponent(model), "utf8");
   writeFileSync(join(outDir, `${sample.name}.timeline.js`), timelineSource(model), "utf8");
-  writeFileSync(join(outDir, `${sample.name}.preset.json`), presetJson(sample.project), "utf8");
+  writeFileSync(
+    join(outDir, `${sample.name}.titlecard.json`),
+    projectFileJson(sample.project),
+    "utf8",
+  );
   index.push(sample.name);
 }
 

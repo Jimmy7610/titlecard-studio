@@ -1,4 +1,4 @@
-import { presetJson } from "@/lib/presets/schema";
+import { projectFileJson, projectFileName } from "@/lib/persistence";
 import { slugify } from "@/lib/project";
 import { standaloneHtml, reactComponent } from "@/lib/export/documents";
 import { buildExportModel, type ExportModel } from "@/lib/export/model";
@@ -11,11 +11,17 @@ export { GSAP_CDN_VERSION } from "@/lib/export/runtime";
 export { SPLIT_PRIMITIVES_CSS, scopeVars, layerVars } from "@/lib/export/css";
 export { standaloneHtml, reactComponent } from "@/lib/export/documents";
 export { timelineSource, layerTimelineSource } from "@/lib/export/timeline";
-export { presetJson, parsePreset, PresetError } from "@/lib/presets/schema";
+export {
+  PersistenceError,
+  parseProjectFile,
+  parseStylePreset,
+  projectFileJson,
+  stylePresetJson,
+} from "@/lib/persistence";
 export { slugify } from "@/lib/project";
 
 /** The code exports, keyed the way the export panel groups them. */
-export type CodeExportKind = "html" | "react" | "preset" | "timeline";
+export type CodeExportKind = "html" | "react" | "project" | "timeline";
 
 export type GeneratedFile = {
   name: string;
@@ -46,12 +52,12 @@ export function generate(
         body: reactComponent(model),
         label: "React component",
       };
-    case "preset":
+    case "project":
       return {
-        name: `${stem}.preset.json`,
+        name: projectFileName(project),
         mime: "application/json",
-        body: presetJson(project),
-        label: "Preset",
+        body: projectFileJson(project),
+        label: "Titlecard project",
       };
     case "timeline":
       return {
