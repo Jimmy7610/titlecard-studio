@@ -29,6 +29,11 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : [["list"]],
   timeout: 45_000,
+  // Strict by default. Playwright's default is "missing", which writes a
+  // baseline it has never compared and fails the run — so a first run on a new
+  // platform looks like a regression, and a second run passes against a
+  // baseline nobody looked at. Writing one is something you ask for.
+  updateSnapshots: "none",
   expect: {
     timeout: 10_000,
     toHaveScreenshot: {

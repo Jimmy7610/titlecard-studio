@@ -136,7 +136,7 @@ const readRoomForContext = () =>
 
 export function Editor() {
   const controller = useProject();
-  const { project, layer, update, updateLayer, undo, redo, canUndo, canRedo, reset } =
+  const { project, layer, update, updateLayer, undo, redo, canUndo, canRedo, reset, migrated } =
     controller;
 
   const [section, setSection] = React.useState<SectionId>("templates");
@@ -159,6 +159,16 @@ export function Editor() {
   // count changing does.
   const hasStage = model.layers.length > 0;
   React.useEffect(() => installTestHook(hasStage ? stage.current : null), [hasStage, model]);
+
+  // Reading a project written by an older build is the one moment a file
+  // changes shape without the user asking, so it is the one moment worth
+  // saying so.
+  React.useEffect(() => {
+    if (!migrated) return;
+    toast.success("Project upgraded", {
+      description: "It was saved by an older version and has been brought forward.",
+    });
+  }, [migrated]);
 
   // Bumped whenever the preview is rebuilt, so the transport bar re-attaches
   // its animation frame to the new timeline.

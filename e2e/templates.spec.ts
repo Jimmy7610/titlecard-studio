@@ -1,7 +1,14 @@
 import { expect, test } from "@playwright/test";
 
 import { TEMPLATES } from "../lib/templates";
-import { collectErrors, dismissOnboarding, gotoEditor, probeStage, realErrors } from "./helpers";
+import {
+  SESSION_KEY,
+  collectErrors,
+  dismissOnboarding,
+  gotoEditor,
+  probeStage,
+  realErrors,
+} from "./helpers";
 
 /**
  * Every template, in one data-driven pass.
@@ -41,8 +48,7 @@ test.describe("templates", () => {
 
     for (const template of TEMPLATES) {
       await page.evaluate(
-        ([templateId, phrase]) => {
-          const key = "stw:session:v3";
+        ([templateId, phrase, key]) => {
           const raw = window.localStorage.getItem(key);
           const project = raw ? JSON.parse(raw) : {};
           project.schemaVersion = 3;
@@ -62,7 +68,7 @@ test.describe("templates", () => {
           project.motion = { ...(project.motion ?? {}), loop: false };
           window.localStorage.setItem(key, JSON.stringify(project));
         },
-        [template.id, PHRASE] as const,
+        [template.id, PHRASE, SESSION_KEY] as const,
       );
 
       await page.reload();

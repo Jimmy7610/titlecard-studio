@@ -13,7 +13,7 @@
     "check": "npm run lint && npm run test && npm run check:exports && npm run check:react && npm run build",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:e2e:update": "playwright test --update-snapshots",
+    "test:e2e:update": "playwright test --update-snapshots=all",
     "samples": "tsx scripts/emit-samples.ts"
   },
   "dependencies": {

@@ -203,10 +203,20 @@ export function Stage({ model, reduceMotion, onReady, ref }: StageProps) {
        * effect rebuild, the second lets that build paint.
        */
       settled: async () => {
+        const paint = () =>
+          new Promise<void>((resolve) => {
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+          });
+
+        // Awaited twice on purpose. The build runs in a layout effect and the
+        // font load is registered in a passive one, so a caller that arrives
+        // between the two would otherwise await an empty promise and be told
+        // the stage had settled on a face that had not loaded yet. After a
+        // paint the passive effect has run and `facesReady` is the real one.
         await facesReady.current;
-        await new Promise<void>((resolve) => {
-          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-        });
+        await paint();
+        await facesReady.current;
+        await paint();
       },
     }),
     [],

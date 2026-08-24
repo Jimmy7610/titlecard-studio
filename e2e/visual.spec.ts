@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 
 import { dismissOnboarding, gotoEditor, seedSession, waitForStage, freezeAt } from "./helpers";
@@ -140,7 +141,18 @@ const SCENES: Scene[] = [
 ];
 
 for (const item of SCENES) {
-  test(`renders ${item.name}`, async ({ page }) => {
+  test(`renders ${item.name}`, async ({ page }, testInfo) => {
+    // Baselines are per platform because font rasterisation is not portable.
+    // On a platform that has none yet, comparing would fail for a reason that
+    // is not a regression — so it skips loudly instead, and `--update-snapshots`
+    // is how the first set gets written. See docs/TESTING.md.
+    const baseline = testInfo.snapshotPath(`${item.name}.png`);
+    const updating = testInfo.config.updateSnapshots !== "none";
+    test.skip(
+      !updating && !existsSync(baseline),
+      `No baseline for ${process.platform}. Run: npm run test:e2e:update`,
+    );
+
     await dismissOnboarding(page);
     await seedSession(page, item.project);
     await gotoEditor(page);
