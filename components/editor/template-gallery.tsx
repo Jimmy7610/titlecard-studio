@@ -226,17 +226,19 @@ function TemplateCard({
                   {line.words.map((word, wordIndex) => (
                     <React.Fragment key={word.key}>
                       <span className="stw-word">
-                        <span className="stw-flash" />
-                        {word.characters.map((character) => (
-                          <span
-                            key={character.key}
-                            className="stw-char"
-                            data-index={character.globalIndex}
-                          >
-                            <span className="stw-glyph" />
-                            <span className="stw-real">{character.char}</span>
-                          </span>
-                        ))}
+                        <span className="stw-mask">
+                          <span className="stw-flash" />
+                          {word.characters.map((character) => (
+                            <span
+                              key={character.key}
+                              className="stw-char"
+                              data-index={character.globalIndex}
+                            >
+                              <span className="stw-glyph" />
+                              <span className="stw-real">{character.char}</span>
+                            </span>
+                          ))}
+                        </span>
                       </span>
                       {wordIndex < line.words.length - 1 ? (
                         <span className="stw-space"> </span>

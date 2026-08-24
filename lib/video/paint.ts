@@ -236,9 +236,10 @@ function paintLayer(
 
   for (const word of layer.words) {
     ctx.save();
-    // The word box is the mask. Clipping to it here is the same rule the DOM
-    // enforces with overflow: hidden.
-    if (layer.masked) clipTo(ctx, word);
+    // The mask box, not the word box: the word is the layout box and the mask
+    // inside it is what carries overflow: hidden. Clipping to the word would
+    // clip a size-multiplied word against the wrong rectangle.
+    if (layer.masked) clipTo(ctx, word.mask);
 
     if (word.flash) {
       const opacity = numberOf(word.flash.el, "opacity");

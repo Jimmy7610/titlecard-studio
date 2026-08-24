@@ -26,6 +26,15 @@ export type CharLayout = BoxLayout & {
 export type WordLayout = BoxLayout & {
   el: HTMLElement;
   flash: (BoxLayout & { el: HTMLElement }) | null;
+  /**
+   * The clip box, which is not the word box.
+   *
+   * The word carries the baseline and the word-level type; the mask inside it
+   * carries `overflow: hidden`. Painting has to clip to the mask, or a word
+   * with a size multiplier would be clipped against a box that is not the one
+   * the DOM is clipping against.
+   */
+  mask: BoxLayout;
   /** Canvas `font` shorthand for every glyph in this word. */
   font: string;
   chars: CharLayout[];
@@ -97,6 +106,7 @@ export function captureLayout(canvasEl: HTMLElement): StageLayout {
       (wordEl, wordIndex) => {
         const font = fontOf(wordEl);
         const flashEl = wordEl.querySelector<HTMLElement>(".stw-flash");
+        const maskEl = wordEl.querySelector<HTMLElement>(".stw-mask") ?? wordEl;
 
         const wordChars: CharLayout[] = [
           ...wordEl.querySelectorAll<HTMLElement>(".stw-char"),
@@ -125,6 +135,7 @@ export function captureLayout(canvasEl: HTMLElement): StageLayout {
           font,
           chars: wordChars,
           flash: flashEl ? { el: flashEl, ...staticRect(flashEl, canvasEl) } : null,
+          mask: staticRect(maskEl, canvasEl),
           ...staticRect(wordEl, canvasEl),
         };
       },

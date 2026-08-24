@@ -119,9 +119,13 @@ export function layerMarkup(model: LayerModel, indent: string): string {
               ? `${seam(pad(3))}<span class="stw-space"> </span>`
               : "";
 
+          // The mask is a separate box from the word: the word carries the
+          // baseline and the word-level typography, the mask carries the clip.
           return `<span class="stw-word" data-word-index="${word.index}"${styleAttr(
             wordStyleVars(style),
-          )}${gradientWord}><span class="stw-flash"></span>${seam(pad(4))}${chars}</span>${space}`;
+          )}${gradientWord}><span class="stw-mask"><span class="stw-flash"></span>${seam(
+            pad(4),
+          )}${chars}</span></span>${space}`;
         })
         .join(seam(pad(3)));
 

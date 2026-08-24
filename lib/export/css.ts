@@ -128,20 +128,45 @@ export const SPLIT_PRIMITIVES_CSS = `
   display: block;
 }
 
+/* The word is the *layout* box and the mask inside it is the *clip* box.
+   Splitting them is what puts a word carrying a size multiplier on the same
+   baseline as its neighbours.
+
+   One box cannot do both jobs. An inline-block whose overflow is not visible
+   takes its bottom margin edge as its baseline, so while the word was itself
+   the clipper it had no text baseline to align on — the best available was
+   bottom alignment, which left a scaled word a descender's difference
+   off the line. With the clip moved inward the word keeps its own strut, the
+   strut sits on the glyphs' baseline, and baseline alignment means what it
+   says at any size.
+
+   The line box is unchanged by the split: the word still contributes the same
+   margin box, so leading, wrapping and the underline all measure exactly what
+   they measured before. */
 .stw-word {
-  position: relative;
   display: inline-block;
-  overflow: hidden;
-  /* An inline-block that clips takes its bottom margin edge as its baseline,
-     so it cannot be baseline-aligned. Bottom alignment plus the split margin
-     below lands its content area on the strut's, which is what puts the caret
-     and the inter-word spaces on the same baseline as the glyphs — and, for a
-     word carrying a size multiplier, leaves it a descender away from the line's
-     baseline rather than a whole ascender. */
-  vertical-align: bottom;
+  /* Visible, so the baseline below comes from the line box rather than from
+     the bottom margin edge. The clip lives on .stw-mask. */
+  overflow: visible;
+  vertical-align: baseline;
+  /* The word's own strut. It has to be the font's content area, not the
+     phrase's leading, or the strut baseline lands half a leading step away
+     from the glyphs it is supposed to align with. */
   line-height: normal;
   margin-top: calc((var(--stw-leading, 1.1) * 1em - 1lh) / 2);
   margin-bottom: calc((var(--stw-leading, 1.1) * 1em - 1lh) / 2);
+}
+
+.stw-mask {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+  line-height: normal;
+  /* Top, not baseline: aligned to the top of the word's line box, the mask
+     leaves the strut to set the baseline. Baseline-aligning a box that clips
+     would put its bottom margin edge on the baseline and push the whole line
+     upward — which is the bug this split exists to remove. */
+  vertical-align: top;
   /* Negative tracking shortens the final glyph's advance, which the mask
      would otherwise clip. Give the box that width back. */
   padding-right: max(0em, calc(-1 * var(--stw-tracking, -0.025em)));
@@ -156,11 +181,14 @@ export const SPLIT_PRIMITIVES_CSS = `
     margin-top: calc((var(--stw-leading, 1.1) - var(--stw-mask, 1.32)) * 0.5em);
     margin-bottom: calc((var(--stw-leading, 1.1) - var(--stw-mask, 1.32)) * 0.5em);
   }
+  .stw-mask {
+    line-height: var(--stw-mask, 1.32);
+  }
 }
 
 /* A few templates are about oversize scale or a seeded scatter. The mask
    does not bound those, it amputates them, so they opt out explicitly. */
-.stw[data-overflow="visible"] .stw-word {
+.stw[data-overflow="visible"] .stw-mask {
   overflow: visible;
 }
 

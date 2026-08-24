@@ -225,11 +225,13 @@ ${fontNote}${customNote}
 //
 //   .stw-scope { --stw-hot: var(--brand-500); --stage-ink: var(--fg); }
 //
-// The word span carries overflow: hidden and is exactly one line box tall at
+// The mask span carries overflow: hidden and is exactly one line box tall at
 // line-height: normal, so a character at translateY(110%) clears its own mask
-// whatever typeface is loaded. Leading is applied as a negative margin between
-// lines, so pulling lines tight never shrinks the box the glyphs are clipped
-// against and the block still ends on the last line's descent.
+// whatever typeface is loaded. The word around it is the layout box: it holds
+// the baseline and the word-level type, which is what lets a word with a size
+// multiplier sit on the same baseline as its neighbours. Leading is applied as
+// a negative margin split above and below the word, so pulling lines tight
+// never shrinks the box the glyphs are clipped against.
 
 import * as React from "react";
 import { useGSAP } from "@gsap/react";
@@ -306,19 +308,21 @@ ${model.theme.grain > 0 ? '        <span className="stw-grain" />\n' : ""}      
                           data-word-index={word.index}
                           style={asStyle(word.style)}
                         >
-                          <span className="stw-flash" />
-                          {word.chars.map((character) => (
-                            <span
-                              key={character.i}
-                              className="stw-char"
-                              data-index={character.i}
-                              data-word={character.w}
-                              data-gradient={character.g ? "true" : undefined}
-                            >
-                              <span className="stw-glyph" />
-                              <span className="stw-real">{character.c}</span>
-                            </span>
-                          ))}
+                          <span className="stw-mask">
+                            <span className="stw-flash" />
+                            {word.chars.map((character) => (
+                              <span
+                                key={character.i}
+                                className="stw-char"
+                                data-index={character.i}
+                                data-word={character.w}
+                                data-gradient={character.g ? "true" : undefined}
+                              >
+                                <span className="stw-glyph" />
+                                <span className="stw-real">{character.c}</span>
+                              </span>
+                            ))}
+                          </span>
                         </span>
                         {wordIndex < line.length - 1 ? (
                           <span className="stw-space"> </span>

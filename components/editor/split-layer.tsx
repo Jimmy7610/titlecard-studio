@@ -14,11 +14,12 @@ import type { LayerModel } from "@/lib/export/model";
  *     span.stw             -> the type scope
  *       span.stw-visual
  *         span.stw-line
- *           span.stw-word  -> overflow: hidden (the mask box, one per word)
- *             span.stw-flash
- *             span.stw-char
- *               span.stw-glyph -> scramble overlay, absolute
- *               span.stw-real  -> the real text, always holds the layout
+ *           span.stw-word      -> the layout box: baseline, word typography
+ *             span.stw-mask    -> overflow: hidden (the clip, one per word)
+ *               span.stw-flash
+ *               span.stw-char
+ *                 span.stw-glyph -> scramble overlay, absolute
+ *                 span.stw-real  -> the real text, always holds the layout
  *
  * The markup is deliberately identical to what `lib/export/markup` prints, down
  * to the data attributes, because the exported file has to animate against the
@@ -58,24 +59,26 @@ export function SplitLayer({ model }: { model: LayerModel }) {
                       data-word-index={word.index}
                       style={wordStyleProps(style) as React.CSSProperties}
                     >
-                      <span className="stw-flash" data-stw-flash />
-                      {word.characters.map((character) => (
-                        <span
-                          key={character.key}
-                          className="stw-char"
-                          data-stw-char
-                          data-index={character.globalIndex}
-                          data-word={word.index}
-                          data-gradient={
-                            character.isGradient || style?.gradient ? "true" : undefined
-                          }
-                        >
-                          <span className="stw-glyph" data-stw-glyph />
-                          <span className="stw-real" data-stw-real>
-                            {character.char}
+                      <span className="stw-mask" data-stw-mask>
+                        <span className="stw-flash" data-stw-flash />
+                        {word.characters.map((character) => (
+                          <span
+                            key={character.key}
+                            className="stw-char"
+                            data-stw-char
+                            data-index={character.globalIndex}
+                            data-word={word.index}
+                            data-gradient={
+                              character.isGradient || style?.gradient ? "true" : undefined
+                            }
+                          >
+                            <span className="stw-glyph" data-stw-glyph />
+                            <span className="stw-real" data-stw-real>
+                              {character.char}
+                            </span>
                           </span>
-                        </span>
-                      ))}
+                        ))}
+                      </span>
                     </span>
                     {wordIndex < line.words.length - 1 ? (
                       <span className="stw-space"> </span>
