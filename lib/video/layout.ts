@@ -2,9 +2,9 @@
  * Static layout capture.
  *
  * The video exporter paints to a 2D canvas, and to do that it needs to know
- * where every glyph sits *before* any transform is applied. `offsetLeft` and
- * `offsetTop` are exactly that: layout values, unaffected by `transform`. So
- * the geometry is read once, from the browser's own layout — kerning, tracking,
+ * where every glyph sits *before* any transform is applied. That is what
+ * `lib/geometry` reads: layout values, unaffected by `transform`. So the
+ * geometry is read once, from the browser's own layout — kerning, tracking,
  * font metrics and line breaking all included — and only the animated part is
  * recomputed per frame.
  *
@@ -12,7 +12,9 @@
  * getting it subtly wrong for exactly the fonts this app is about.
  */
 
-export type BoxLayout = { x: number; y: number; w: number; h: number };
+import { staticRect, translationOf, type Box } from "@/lib/geometry";
+
+export type BoxLayout = Box;
 
 export type CharLayout = BoxLayout & {
   el: HTMLElement;
@@ -68,38 +70,6 @@ export type StageLayout = {
   height: number;
   layers: LayerLayout[];
 };
-
-/** Position of `el` relative to `root`, ignoring every transform on the way. */
-function staticRect(el: HTMLElement, root: HTMLElement): BoxLayout {
-  let x = 0;
-  let y = 0;
-  let node: HTMLElement | null = el;
-
-  while (node && node !== root) {
-    x += node.offsetLeft;
-    y += node.offsetTop;
-    node = node.offsetParent as HTMLElement | null;
-  }
-
-  return { x, y, w: el.offsetWidth, h: el.offsetHeight };
-}
-
-/**
- * The layer's translate, in pixels.
- *
- * Safe to read off the computed style because nothing animates `.stw-layer` —
- * the templates transform characters and words, never the layer.
- */
-function layerOffset(root: HTMLElement): { x: number; y: number } {
-  const transform = window.getComputedStyle(root).transform;
-  if (!transform || transform === "none") return { x: 0, y: 0 };
-  try {
-    const matrix = new DOMMatrixReadOnly(transform);
-    return { x: matrix.e, y: matrix.f };
-  } catch {
-    return { x: 0, y: 0 };
-  }
-}
 
 /** The canvas `font` shorthand for an element's computed type. */
 function fontOf(el: HTMLElement): string {
@@ -180,7 +150,7 @@ export function captureLayout(canvasEl: HTMLElement): StageLayout {
         .map((el) => decor(el, canvasEl))
         .filter((entry): entry is DecorLayout => entry !== null),
       masked: display?.dataset.overflow !== "visible",
-      offset: layerOffset(root),
+      offset: translationOf(root),
     };
   });
 

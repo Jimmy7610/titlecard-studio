@@ -1,12 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { MaximizeIcon, MinusIcon, PlusIcon } from "lucide-react";
+import { MaximizeIcon, MinusIcon, PlusIcon, TriangleAlertIcon } from "lucide-react";
 
 import { Stage, type StageHandle } from "@/components/editor/stage";
 import { Button } from "@/components/ui/button";
+import { useCanvasOverflow } from "@/hooks/use-canvas-overflow";
 import { getCanvasFormat } from "@/lib/canvas-formats";
 import type { ExportModel } from "@/lib/export/model";
+import { overflowMessage } from "@/lib/overflow";
 import { cn } from "@/lib/utils";
 
 /**
@@ -34,6 +36,7 @@ export function CanvasViewport({
   stageRef,
 }: CanvasViewportProps) {
   const frame = React.useRef<HTMLDivElement>(null);
+  const stageBox = React.useRef<HTMLDivElement>(null);
   const [box, setBox] = React.useState({ width: 0, height: 0 });
   /** `null` means "fit"; a number is an explicit zoom the user asked for. */
   const [zoom, setZoom] = React.useState<number | null>(null);
@@ -91,6 +94,15 @@ export function CanvasViewport({
   const format = getCanvasFormat(canvas.formatId);
   const safe = safeZones ? format?.safe : undefined;
 
+  // Reported, never acted on: the size is a control the user set, and shrinking
+  // it to fit would quietly overrule them. Nothing about the warning reaches the
+  // export — the same frames come out whether or not it is showing.
+  const overflow = useCanvasOverflow(model, stageBox);
+  const overflowText = overflowMessage(
+    overflow,
+    model.layers.map((layer) => layer.layer.name),
+  );
+
   const stepZoom = (direction: 1 | -1) => {
     const current = scale;
     const candidates = direction === 1 ? ZOOM_STEPS : [...ZOOM_STEPS].reverse();
@@ -107,6 +119,7 @@ export function CanvasViewport({
         className="stw-viewport relative flex min-h-0 flex-1 items-center justify-center overflow-auto p-6"
       >
         <div
+          ref={stageBox}
           className="relative shrink-0 shadow-2xl shadow-black/50 ring-1 ring-white/10"
           style={{ width: displayWidth }}
         >
@@ -153,6 +166,27 @@ export function CanvasViewport({
             </div>
           ) : null}
         </div>
+      </div>
+
+      {/* Always mounted, empty or not. A live region that appears along with
+          its first message is announced inconsistently, and a strip that
+          appears and disappears would reflow the canvas under the pointer. */}
+      <div
+        role="status"
+        aria-live="polite"
+        className={cn(
+          "flex items-start gap-2 border-t px-3 text-[0.7rem] transition-colors",
+          overflowText
+            ? "border-amber-500/30 bg-amber-500/10 py-1.5 text-amber-200"
+            : "sr-only border-transparent",
+        )}
+      >
+        {overflowText ? (
+          <>
+            <TriangleAlertIcon className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+            <span>{overflowText}</span>
+          </>
+        ) : null}
       </div>
 
       <div className="flex items-center justify-between gap-3 border-t border-border px-3 py-1.5">

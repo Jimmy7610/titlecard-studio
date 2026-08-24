@@ -145,3 +145,21 @@ test("reduced motion commits the resting frame instead of animating", async ({ p
   expect(opacity.length).toBeGreaterThan(0);
   expect(opacity.every((value) => value > 0.99)).toBe(true);
 });
+
+test("every settings slider is announced by name", async ({ page }) => {
+  // The role="slider" element is the thumb, not the root the label was on, so
+  // each of these was reachable by keyboard and announced as just "slider".
+  await openPanel(page, "Typography");
+  for (const name of ["Size", "Tracking", "Leading"]) {
+    await expect(page.getByRole("slider", { name, exact: true })).toHaveCount(1);
+  }
+
+  await openPanel(page, "Motion");
+  const named = await page
+    .getByRole("slider")
+    .evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute("aria-label")?.trim() ?? ""),
+    );
+  expect(named.length).toBeGreaterThan(0);
+  expect(named.filter((label) => label === "")).toEqual([]);
+});
